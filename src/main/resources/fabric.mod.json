@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "feedhelper",
+  "version": "${version}",
+  "name": "feedHelper",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/feedhelper/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-datagen": [
+      "com.linearity.feedhelper.client.FeedhelperDataGenerator"
+    ],
+    "client": [
+      "com.linearity.feedhelper.client.FeedhelperClient"
+    ],
+    "main": [
+      "com.linearity.feedhelper.Feedhelper"
+    ]
+  },
+  "mixins": [
+    "feedhelper.mixins.json",
+    {
+      "config": "feedhelper.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}",
+    "malilib": ">=0.26.0-"
+  }
+}

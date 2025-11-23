@@ -1,0 +1,38 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.linearity.feedhelper.client.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "AbstractBlockAccessor",
+    "BlindnessEffectFogModifierMixin",
+    "ClientPlayerInteractionManagerMixin",
+    "ClientPlayNetworkHandlerMixin",
+    "CreeperEntityAccessor",
+    "CrossbowItemMixin",
+    "DarknessEffectFogModifierMixin",
+    "EnderDragonEntityAccessor",
+    "EntityGlowMixin",
+    "EntityMixin",
+    "FogRendererMixin",
+    "GameRendererAccessor",
+    "GameRendererMixin",
+    "KeyBindingMixin",
+    "LivingEntityMixin",
+    "LivingEntityRendererMixin",
+    "MinecraftClientMixin",
+    "PiglinEntityAccessor",
+    "PlayerEntityMixin",
+    "PlayerInputMixin",
+    "VertexConsumerProviderImmediateAcccessor",
+    "WorldRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  },
+  "mixins": [
+  ]
+}
