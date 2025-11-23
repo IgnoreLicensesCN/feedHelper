@@ -1,1 +1,1 @@
-maybe i should use LGPL due to malilib and tweakeroo but i dont read licenses
+maybe i should use LGPL due to malilib and tweakeroo but i dont read licenses.for this part i copied their licenses
