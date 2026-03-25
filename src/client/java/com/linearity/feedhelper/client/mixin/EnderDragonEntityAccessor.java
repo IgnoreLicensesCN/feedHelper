@@ -1,11 +1,11 @@
 package com.linearity.feedhelper.client.mixin;
 
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonPart;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(EnderDragonEntity.class)
+@Mixin(EnderDragon.class)
 public interface EnderDragonEntityAccessor {
 
     @Accessor("neck")
@@ -23,9 +23,9 @@ public interface EnderDragonEntityAccessor {
     @Accessor("tail3")
     EnderDragonPart getTail3();
 
-    @Accessor("rightWing")
+    @Accessor("wing1")
     EnderDragonPart getRightWing();
 
-    @Accessor("leftWing")
+    @Accessor("wing2")
     EnderDragonPart getLeftWing();
 }

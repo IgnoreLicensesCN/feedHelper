@@ -1,6 +1,5 @@
 package com.linearity.feedhelper.client.utils.linedshapes;
 
-import net.minecraft.client.render.Tessellator;
 import org.joml.Vector3f;
 
 public class IcosaSphere {

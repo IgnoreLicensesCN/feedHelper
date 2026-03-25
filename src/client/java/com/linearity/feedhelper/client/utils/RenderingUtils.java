@@ -1,25 +1,23 @@
 package com.linearity.feedhelper.client.utils;
 
-import com.linearity.feedhelper.client.utils.linedshapes.IcosaSphere;
 import com.linearity.feedhelper.client.utils.linedshapes.OutlineBalls;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.VertexBufferManager;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.*;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 
-import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static com.linearity.feedhelper.client.utils.linedshapes.OutlineBalls.getSphereLinesCached;
@@ -35,7 +33,7 @@ public class RenderingUtils {
 
     public static int rectSize = 10;
 
-    public static void renderBoxLines(Box box, MatrixStack matrices, VertexConsumer consumer, float[] color, Vec3d cameraPos) {
+    public static void renderBoxLines(AABB box, PoseStack matrices, VertexConsumer consumer, float[] color, Vec3 cameraPos) {
         Vector3f[] vertices = new Vector3f[] {
                 new Vector3f((float)box.minX, (float)box.minY, (float)box.minZ),
                 new Vector3f((float)box.maxX, (float)box.minY, (float)box.minZ),
@@ -53,15 +51,15 @@ public class RenderingUtils {
                 {0,4},{1,5},{2,6},{3,7}
         };
 
-        Matrix4f mat = matrices.peek().getPositionMatrix();
+        Matrix4f mat = matrices.last().pose();
 
         for (int[] edge : edges) {
             Vector3f from = vertices[edge[0]];
             Vector3f to = vertices[edge[1]];
 
             // 世界坐标减去摄像机位置
-            Vec3d offsetFrom = new Vec3d(from.x(), from.y(), from.z()).subtract(cameraPos);
-            Vec3d offsetTo   = new Vec3d(to.x(), to.y(), to.z()).subtract(cameraPos);
+            Vec3 offsetFrom = new Vec3(from.x(), from.y(), from.z()).subtract(cameraPos);
+            Vec3 offsetTo   = new Vec3(to.x(), to.y(), to.z()).subtract(cameraPos);
 
             putLine(consumer, mat, 0,0,0,
                     new Vector3f((float)offsetFrom.x, (float)offsetFrom.y, (float)offsetFrom.z),
@@ -71,13 +69,13 @@ public class RenderingUtils {
     }
 
 
-    public static Vec3d worldToScreen(MinecraftClient client, Vec3d worldPos) {
-        Camera camera = client.gameRenderer.getCamera();
-        Vec3d camPos = camera.getCameraPos(); // 摄像机位置
-        Quaternionf rotation = camera.getRotation(); // 摄像机旋转
+    public static Vec3 worldToScreen(Minecraft client, Vec3 worldPos) {
+        Camera camera = client.gameRenderer.getMainCamera();
+        Vec3 camPos = camera.position(); // 摄像机位置
+        Quaternionf rotation = camera.rotation(); // 摄像机旋转
 
         // 世界坐标相对摄像机
-        Vec3d relative = worldPos.subtract(camPos);
+        Vec3 relative = worldPos.subtract(camPos);
 
         // 构造 view 矩阵：旋转 + 平移
         Vector4f vec = new Vector4f((float) relative.x, (float) relative.y, (float) relative.z, 1f);
@@ -88,8 +86,8 @@ public class RenderingUtils {
         vec.set(tmp.x(), tmp.y(), tmp.z(), 1f);
 
         // 构造投影矩阵
-        float fov = client.options.getFov().getValue().floatValue();
-        float aspect = (float) client.getWindow().getScaledWidth() / client.getWindow().getScaledHeight();
+        float fov = client.options.fov().get().floatValue();
+        float aspect = (float) client.getWindow().getGuiScaledWidth() / client.getWindow().getGuiScaledHeight();
         float near = 0.05f;
         float far = 1000f;
         float f = (float) (1.0 / Math.tan(Math.toRadians(fov / 2.0)));
@@ -114,32 +112,32 @@ public class RenderingUtils {
             return null;
         }
 
-        int sw = client.getWindow().getScaledWidth();
-        int sh = client.getWindow().getScaledHeight();
+        int sw = client.getWindow().getGuiScaledWidth();
+        int sh = client.getWindow().getGuiScaledHeight();
         double screenX = (ndcX * 0.5 + 0.5) * sw;
         double screenY = (1.0 - (ndcY * 0.5 + 0.5)) * sh;
 
-        return new Vec3d(screenX, screenY, ndcZ);
+        return new Vec3(screenX, screenY, ndcZ);
     }
 
-    public static void drawRect(DrawContext context, int x1, int y1, int x2, int y2, int argb) {
-        context.drawVerticalLine(x1,y1,y2,argb);
-        context.drawVerticalLine(x2,y1,y2,argb);
-        context.drawHorizontalLine(x1,x2,y1,argb);
-        context.drawHorizontalLine(x1,x2,y2,argb);
+    public static void drawRect(GuiGraphics context, int x1, int y1, int x2, int y2, int argb) {
+        context.vLine(x1,y1,y2,argb);
+        context.vLine(x2,y1,y2,argb);
+        context.hLine(x1,x2,y1,argb);
+        context.hLine(x1,x2,y2,argb);
 
     }
 
-    public static void renderTransparentSphere(MatrixStack matrices,
+    public static void renderTransparentSphere(PoseStack matrices,
                                                double x, double y, double z,
                                                float radius, float[] color,
                                                int latDivisions, int lonDivisions) {
 // 获取线框层
 
-        VertexConsumerProvider.Immediate provider = MinecraftClient.getInstance().getBufferBuilders().getEntityVertexConsumers();
+        MultiBufferSource.BufferSource provider = Minecraft.getInstance().renderBuffers().bufferSource();
 
-        VertexConsumer consumer = provider.getBuffer(RenderLayer.getLines());
-        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        VertexConsumer consumer = provider.getBuffer(RenderTypes.lines());
+        Matrix4f matrix = matrices.last().pose();
 
         // 设置线宽
         GL11.glLineWidth(2.f);
@@ -153,30 +151,37 @@ public class RenderingUtils {
             putLine(consumer,matrix,x,y,z,a,b,color);
         }
 
-        provider.draw();
+        provider.endBatch();
     }
 
     // 画线段
     public static void putLine(VertexConsumer consumer, Matrix4f matrix,
+                               double cx, double cy, double cz,
+                               Vector3f from, Vector3f to, float[] color){
+        putLine(consumer, matrix, cx, cy, cz, from, to, color,1);
+    }
+    public static void putLine(VertexConsumer consumer, Matrix4f matrix,
                                 double cx, double cy, double cz,
-                                Vector3f from, Vector3f to, float[] color) {
+                                Vector3f from, Vector3f to, float[] color, float lineWidth) {
         Vector3f normal = new Vector3f(to).sub(from).normalize(); // 简单法线
 
         // 起点
-        consumer.vertex(matrix, (float)(cx + from.x()), (float)(cy + from.y()), (float)(cz + from.z()))
-                .color(color[0], color[1], color[2], color[3])
-                .texture(0f, 0f)      // UV0
-                .overlay(OverlayTexture.DEFAULT_UV)
-                .light(0xF000F0)
-                .normal(normal.x(), normal.y(), normal.z());
+        consumer.addVertex(matrix, (float)(cx + from.x()), (float)(cy + from.y()), (float)(cz + from.z()))
+                .setColor(color[0], color[1], color[2], color[3])
+                .setUv(0f, 0f)      // UV0
+                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setLight(0xF000F0)
+                .setLineWidth(lineWidth)
+                .setNormal(normal.x(), normal.y(), normal.z());
 
         // 终点
-        consumer.vertex(matrix, (float)(cx + to.x()), (float)(cy + to.y()), (float)(cz + to.z()))
-                .color(color[0], color[1], color[2], color[3])
-                .texture(0f, 0f)      // UV0
-                .overlay(OverlayTexture.DEFAULT_UV)
-                .light(0xF000F0)
-                .normal(normal.x(), normal.y(), normal.z());
+        consumer.addVertex(matrix, (float)(cx + to.x()), (float)(cy + to.y()), (float)(cz + to.z()))
+                .setColor(color[0], color[1], color[2], color[3])
+                .setUv(0f, 0f)      // UV0
+                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setLight(0xF000F0)
+                .setLineWidth(lineWidth)
+                .setNormal(normal.x(), normal.y(), normal.z());
     }
 
     private static Vector3f sphericalToCartesian(float radius, float lat, float lon) {
@@ -186,37 +191,41 @@ public class RenderingUtils {
         return new Vector3f(x, y, z);
     }
 
-    public static void renderBeam(MatrixStack matrices, Vec3d start, Vec3d end, float[] color, float width) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        VertexConsumerProvider.Immediate provider = client.getBufferBuilders().getEntityVertexConsumers();
-        VertexConsumer consumer = provider.getBuffer(RenderLayer.getEntityTranslucent(
-                Identifier.of("minecraft", "textures/entity/beacon_beam.png")));
+    public static void renderBeam(PoseStack matrices, Vec3 start, Vec3 end, float[] color, float width) {
+        Minecraft client = Minecraft.getInstance();
+        MultiBufferSource.BufferSource provider = client.renderBuffers().bufferSource();
+        VertexConsumer consumer = provider.getBuffer(RenderTypes.beaconBeam(
+                Identifier.fromNamespaceAndPath("minecraft", "textures/entity/beacon_beam.png"),true));
 
-        Vec3d dir = end.subtract(start).normalize();
-        float yaw = client.getEntityRenderDispatcher().camera.getYaw();
-        float pitch = client.getEntityRenderDispatcher().camera.getPitch();
+        Vec3 dir = end.subtract(start).normalize();
+        var camera = client.getEntityRenderDispatcher().camera;
+        if (camera == null){
+            return;
+        }
+        float yaw = camera.yRot();
+        float pitch = camera.xRot();
 
 // 转成弧度
         double yawRad = Math.toRadians(-yaw);
         double pitchRad = Math.toRadians(-pitch);
 
 // 摄像机朝向向量
-        Vec3d cameraDir = new Vec3d(
+        Vec3 cameraDir = new Vec3(
                 Math.sin(yawRad) * Math.cos(pitchRad),
                 Math.sin(pitchRad),
                 Math.cos(yawRad) * Math.cos(pitchRad)
         ).normalize();
 
         // 摄像机右向量
-        Vec3d right = dir.crossProduct(cameraDir).normalize().multiply(width / 2.0);
-        if (right.lengthSquared() < 1e-6) right = new Vec3d(width / 2.0, 0, 0);
+        Vec3 right = dir.cross(cameraDir).normalize().scale(width / 2.0);
+        if (right.lengthSqr() < 1e-6) right = new Vec3(width / 2.0, 0, 0);
 
-        Vec3d up = right.crossProduct(dir).normalize().multiply(width / 2.0);
+        Vec3 up = right.cross(dir).normalize().scale(width / 2.0);
 
-        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        Matrix4f matrix = matrices.last().pose();
 
         // 八个角点组成柱体
-        Vec3d[] corners = new Vec3d[]{
+        Vec3[] corners = new Vec3[]{
                 start.add(right).add(up),
                 start.add(right).subtract(up),
                 start.subtract(right).subtract(up),
@@ -238,36 +247,36 @@ public class RenderingUtils {
         };
 
         for (int[] face : faces) {
-            consumer.vertex(matrix, (float) corners[face[0]].x, (float) corners[face[0]].y, (float) corners[face[0]].z)
-                    .color(color[0], color[1], color[2], color[3])
-                    .texture(0f, 0f)
-                    .overlay(OverlayTexture.DEFAULT_UV)
-                    .light(0xF000F0)
-                    .normal(0f,1f,0f);
+            consumer.addVertex(matrix, (float) corners[face[0]].x, (float) corners[face[0]].y, (float) corners[face[0]].z)
+                    .setColor(color[0], color[1], color[2], color[3])
+                    .setUv(0f, 0f)
+                    .setOverlay(OverlayTexture.NO_OVERLAY)
+                    .setLight(0xF000F0)
+                    .setNormal(0f,1f,0f);
 
-            consumer.vertex(matrix, (float) corners[face[1]].x, (float) corners[face[1]].y, (float) corners[face[1]].z)
-                    .color(color[0], color[1], color[2], color[3])
-                    .texture(1f, 0f)
-                    .overlay(OverlayTexture.DEFAULT_UV)
-                    .light(0xF000F0)
-                    .normal(0f,1f,0f);
+            consumer.addVertex(matrix, (float) corners[face[1]].x, (float) corners[face[1]].y, (float) corners[face[1]].z)
+                    .setColor(color[0], color[1], color[2], color[3])
+                    .setUv(1f, 0f)
+                    .setOverlay(OverlayTexture.NO_OVERLAY)
+                    .setLight(0xF000F0)
+                    .setNormal(0f,1f,0f);
 
-            consumer.vertex(matrix, (float) corners[face[2]].x, (float) corners[face[2]].y, (float) corners[face[2]].z)
-                    .color(color[0], color[1], color[2], color[3])
-                    .texture(1f, 1f)
-                    .overlay(OverlayTexture.DEFAULT_UV)
-                    .light(0xF000F0)
-                    .normal(0f,1f,0f);
+            consumer.addVertex(matrix, (float) corners[face[2]].x, (float) corners[face[2]].y, (float) corners[face[2]].z)
+                    .setColor(color[0], color[1], color[2], color[3])
+                    .setUv(1f, 1f)
+                    .setOverlay(OverlayTexture.NO_OVERLAY)
+                    .setLight(0xF000F0)
+                    .setNormal(0f,1f,0f);
 
-            consumer.vertex(matrix, (float) corners[face[3]].x, (float) corners[face[3]].y, (float) corners[face[3]].z)
-                    .color(color[0], color[1], color[2], color[3])
-                    .texture(0f, 1f)
-                    .overlay(OverlayTexture.DEFAULT_UV)
-                    .light(0xF000F0)
-                    .normal(0f,1f,0f);
+            consumer.addVertex(matrix, (float) corners[face[3]].x, (float) corners[face[3]].y, (float) corners[face[3]].z)
+                    .setColor(color[0], color[1], color[2], color[3])
+                    .setUv(0f, 1f)
+                    .setOverlay(OverlayTexture.NO_OVERLAY)
+                    .setLight(0xF000F0)
+                    .setNormal(0f,1f,0f);
         }
 
-        provider.draw();
+        provider.endBatch();
     }
 
 }

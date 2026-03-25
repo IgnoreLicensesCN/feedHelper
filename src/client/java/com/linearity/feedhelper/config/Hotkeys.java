@@ -15,6 +15,7 @@ public class Hotkeys
     private static final String HOTKEY_KEY = MOD_ID+".config.hotkey";
     public static final ConfigHotkey FARM                  = new ConfigHotkey("farm",                  "G", KeybindSettings.PRESS_ALLOWEXTRA).apply(HOTKEY_KEY);
     public static final ConfigHotkey FEED                  = new ConfigHotkey("feed",                  "H", KeybindSettings.PRESS_ALLOWEXTRA).apply(HOTKEY_KEY);
+    public static final ConfigHotkey ATTACK_HEALTH_LOWEST_GROWN_ANIMAL                  = new ConfigHotkey("attackHealthLowestGrownAnimal",                  "", KeybindSettings.PRESS_ALLOWEXTRA).apply(HOTKEY_KEY);
     public static final ConfigHotkey OPEN_CONFIG_GUI                    = new ConfigHotkey("openConfigGui",                     "X,V").apply(HOTKEY_KEY);
     public static final ConfigHotkey ELYTRA_SPEED_UP                  = new ConfigHotkey("elytraSpeedUp",                  "", KeybindSettings.PRESS_ALLOWEXTRA).apply(HOTKEY_KEY);
     public static final ConfigHotkey ELYTRA_SPEED_DOWN                  = new ConfigHotkey("elytraSpeedDown",                  "", KeybindSettings.PRESS_ALLOWEXTRA).apply(HOTKEY_KEY);
@@ -22,6 +23,7 @@ public class Hotkeys
     public static final List<ConfigHotkey> HOTKEY_LIST = ImmutableList.of(
             FARM,
             FEED,
+            ATTACK_HEALTH_LOWEST_GROWN_ANIMAL,
             OPEN_CONFIG_GUI,
             ELYTRA_SPEED_UP,
             ELYTRA_SPEED_DOWN

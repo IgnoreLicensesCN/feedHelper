@@ -46,12 +46,12 @@ public class Configs implements IConfigHandler {
             JsonElement element = JsonUtils.parseJsonFileAsPath(configFile);
             if (element != null && element.isJsonObject()) {
                 JsonObject root = element.getAsJsonObject();
-                ConfigUtils.readConfigBase(root, "Fixes", Configs.Fixes.OPTIONS);
-                ConfigUtils.readConfigBase(root, "Generic", Configs.Generic.OPTIONS);
+                ConfigUtils.readConfigBase(root, "Fixes", Fixes.OPTIONS);
+                ConfigUtils.readConfigBase(root, "Generic", Generic.OPTIONS);
                 ConfigUtils.readConfigBase(root, "GenericHotkeys", Hotkeys.HOTKEY_LIST);
-                ConfigUtils.readConfigBase(root, "Internal", Configs.Internal.OPTIONS);
-                ConfigUtils.readConfigBase(root, "Lists", Configs.Lists.OPTIONS);
-                ConfigUtils.readHotkeyToggleOptions(root, "DisableHotkeys", "DisableToggles", Configs.Disable.OPTIONS);
+                ConfigUtils.readConfigBase(root, "Internal", Internal.OPTIONS);
+                ConfigUtils.readConfigBase(root, "Lists", Lists.OPTIONS);
+                ConfigUtils.readHotkeyToggleOptions(root, "DisableHotkeys", "DisableToggles", Disable.OPTIONS);
                 ConfigUtils.readHotkeyToggleOptions(root, "TweakHotkeys", "TweakToggles", FeatureToggle.VALUES);
             }
         } else {
@@ -93,12 +93,12 @@ public class Configs implements IConfigHandler {
 
         if (Files.isDirectory(dir, new LinkOption[0])) {
             JsonObject root = new JsonObject();
-            ConfigUtils.writeConfigBase(root, "Fixes", Configs.Fixes.OPTIONS);
-            ConfigUtils.writeConfigBase(root, "Generic", Configs.Generic.OPTIONS);
+            ConfigUtils.writeConfigBase(root, "Fixes", Fixes.OPTIONS);
+            ConfigUtils.writeConfigBase(root, "Generic", Generic.OPTIONS);
             ConfigUtils.writeConfigBase(root, "GenericHotkeys", Hotkeys.HOTKEY_LIST);
-            ConfigUtils.writeConfigBase(root, "Internal", Configs.Internal.OPTIONS);
-            ConfigUtils.writeConfigBase(root, "Lists", Configs.Lists.OPTIONS);
-            ConfigUtils.writeHotkeyToggleOptions(root, "DisableHotkeys", "DisableToggles", Configs.Disable.OPTIONS);
+            ConfigUtils.writeConfigBase(root, "Internal", Internal.OPTIONS);
+            ConfigUtils.writeConfigBase(root, "Lists", Lists.OPTIONS);
+            ConfigUtils.writeHotkeyToggleOptions(root, "DisableHotkeys", "DisableToggles", Disable.OPTIONS);
             ConfigUtils.writeHotkeyToggleOptions(root, "TweakHotkeys", "TweakToggles", FeatureToggle.VALUES);
             JsonUtils.writeJsonToFileAsPath(root, dir.resolve(MOD_ID+".json"));
         } else {
@@ -121,6 +121,8 @@ public class Configs implements IConfigHandler {
         public static final ConfigDouble ELYTRA_SPEED_UP_MULTIPLIER = new ConfigDouble("elytraSpeedUpMultiplier", 1.0526315789473684).apply(GENERIC_KEY);
         public static final ConfigDouble ELYTRA_SPEED_DOWN_MULTIPLIER = new ConfigDouble("elytraSpeedDownMultiplier", 0.95).apply(GENERIC_KEY);
         public static final ConfigDouble AVOID_ELYTRA_COLLISION_MIN_SPEED = new ConfigDouble("avoidElytraCollisionMinSpeed",0.1).apply(GENERIC_KEY);
+        public static final ConfigDouble ELYTRA_CREATIVE_FLYING_DIRECTION_SPEED = new ConfigDouble("elytraCreativeFlyingDirectionSpeed",1.2).apply(GENERIC_KEY);
+        public static final ConfigDouble ELYTRA_CREATIVE_SPRINT_SPEED_MULTIPLIER = new ConfigDouble("elytraCreativeFlyingSprintSpeedMultiplier",2).apply(GENERIC_KEY);
         public static final ImmutableList<IConfigBase> OPTIONS;
         public static final ImmutableList<IHotkey> HOTKEYS;
 
@@ -130,7 +132,15 @@ public class Configs implements IConfigHandler {
         static {
 //            ACCURATE_PLACEMENT_PROTOCOL_MODE = (ConfigOptionList)(new ConfigOptionList("accuratePlacementProtocolMode", EasyPlacementProtocol.AUTO)).apply("tweakeroo.config.generic");
 //            ACCURATE_PLACEMENT_PROTOCOL = (ConfigBoolean)(new ConfigBoolean("accuratePlacementProtocol", true)).apply("tweakeroo.config.generic");
-            OPTIONS = ImmutableList.of(ELYTRA_MAX_SPEED,ELYTRA_MIN_SPEED,ELYTRA_SPEED_UP_MULTIPLIER,ELYTRA_SPEED_DOWN_MULTIPLIER,AVOID_ELYTRA_COLLISION_MIN_SPEED);
+            OPTIONS = ImmutableList.of(
+                    ELYTRA_MAX_SPEED,
+                    ELYTRA_MIN_SPEED,
+                    ELYTRA_SPEED_UP_MULTIPLIER,
+                    ELYTRA_SPEED_DOWN_MULTIPLIER,
+                    AVOID_ELYTRA_COLLISION_MIN_SPEED,
+                    ELYTRA_CREATIVE_FLYING_DIRECTION_SPEED,
+                    ELYTRA_CREATIVE_SPRINT_SPEED_MULTIPLIER
+            );
             HOTKEYS = ImmutableList.of();
         }
     }

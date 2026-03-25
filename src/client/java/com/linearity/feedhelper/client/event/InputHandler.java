@@ -9,19 +9,12 @@ import fi.dy.masa.malilib.gui.GuiBase;
 import fi.dy.masa.malilib.hotkeys.*;
 import fi.dy.masa.malilib.util.GuiUtils;
 import fi.dy.masa.malilib.util.InfoUtils;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Click;
-import net.minecraft.client.input.Input;
-import net.minecraft.client.input.KeyInput;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.Hand;
-import net.minecraft.util.PlayerInput;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.player.ClientInput;
+import net.minecraft.world.entity.player.Input;
 
 import static com.linearity.feedhelper.client.FeedhelperClient.MOD_ID;
 import static com.linearity.feedhelper.client.FeedhelperClient.MOD_NAME;
@@ -29,8 +22,8 @@ import static com.linearity.feedhelper.client.FeedhelperClient.MOD_NAME;
 public class InputHandler implements IKeybindProvider, IKeyboardInputHandler, IMouseInputHandler
 {
     private static final InputHandler INSTANCE = new InputHandler();
-    private InputHandler.LeftRight lastSidewaysInput = InputHandler.LeftRight.NONE;
-    private InputHandler.ForwardBack lastForwardInput = InputHandler.ForwardBack.NONE;
+    private LeftRight lastSidewaysInput = LeftRight.NONE;
+    private ForwardBack lastForwardInput = ForwardBack.NONE;
 
     private InputHandler()
     {
@@ -76,9 +69,9 @@ public class InputHandler implements IKeybindProvider, IKeyboardInputHandler, IM
     }
 
     @Override
-    public boolean onKeyInput(KeyInput input, boolean eventKeyState)
+    public boolean onKeyInput(KeyEvent input, boolean eventKeyState)
     {
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
 
         // Not in a GUI
         if (GuiUtils.getCurrentScreen() == null && eventKeyState)
@@ -92,11 +85,11 @@ public class InputHandler implements IKeybindProvider, IKeyboardInputHandler, IM
     }
 
     @Override
-    public boolean onMouseClick(Click click, boolean eventButtonState)
+    public boolean onMouseClick(MouseButtonEvent click, boolean eventButtonState)
     {
-        MinecraftClient mc = MinecraftClient.getInstance();
+        Minecraft mc = Minecraft.getInstance();
 
-        if (mc.world == null || mc.player == null || mc.interactionManager == null || mc.crosshairTarget == null ||
+        if (mc.level == null || mc.player == null || mc.gameMode == null || mc.hitResult == null ||
                 GuiUtils.getCurrentScreen() != null)
         {
             return false;
@@ -310,66 +303,66 @@ public class InputHandler implements IKeybindProvider, IKeyboardInputHandler, IM
         return false;
     }
 
-    public InputHandler.LeftRight getLastSidewaysInput()
+    public LeftRight getLastSidewaysInput()
     {
         return this.lastSidewaysInput;
     }
 
-    public InputHandler.ForwardBack getLastForwardInput()
+    public ForwardBack getLastForwardInput()
     {
         return this.lastForwardInput;
     }
 
-    private void storeLastMovementDirection(KeyInput input, MinecraftClient mc)
+    private void storeLastMovementDirection(KeyEvent input, Minecraft mc)
     {
-        if (mc.options.forwardKey.matchesKey(input))
+        if (mc.options.keyUp.matches(input))
         {
-            this.lastForwardInput = InputHandler.ForwardBack.FORWARD;
+            this.lastForwardInput = ForwardBack.FORWARD;
         }
-        else if (mc.options.backKey.matchesKey(input))
+        else if (mc.options.keyDown.matches(input))
         {
-            this.lastForwardInput = InputHandler.ForwardBack.BACK;
+            this.lastForwardInput = ForwardBack.BACK;
         }
-        else if (mc.options.leftKey.matchesKey(input))
+        else if (mc.options.keyLeft.matches(input))
         {
-            this.lastSidewaysInput = InputHandler.LeftRight.LEFT;
+            this.lastSidewaysInput = LeftRight.LEFT;
         }
-        else if (mc.options.rightKey.matchesKey(input))
+        else if (mc.options.keyRight.matches(input))
         {
-            this.lastSidewaysInput = InputHandler.LeftRight.RIGHT;
+            this.lastSidewaysInput = LeftRight.RIGHT;
         }
     }
 
-    public void handleMovementKeys(Input input)
+    public void handleMovementKeys(ClientInput input)
     {
-        GameOptions settings = MinecraftClient.getInstance().options;
-        PlayerInput m = input.playerInput;
+        Options settings = Minecraft.getInstance().options;
+        Input m = input.keyPresses;
 
-        if (settings.leftKey.isPressed() && settings.rightKey.isPressed())
+        if (settings.keyLeft.isDown() && settings.keyRight.isDown())
         {
-            if (this.lastSidewaysInput == InputHandler.LeftRight.LEFT)
+            if (this.lastSidewaysInput == LeftRight.LEFT)
             {
                 //m.movementSideways = 1;
-                input.playerInput = new PlayerInput(m.forward(), m.backward(), true, false, m.jump(), m.sneak(), m.sprint());
+                input.keyPresses = new Input(m.forward(), m.backward(), true, false, m.jump(), m.shift(), m.sprint());
             }
-            else if (this.lastSidewaysInput == InputHandler.LeftRight.RIGHT)
+            else if (this.lastSidewaysInput == LeftRight.RIGHT)
             {
                 //m.movementSideways = -1;
-                input.playerInput =  new PlayerInput(m.forward(), m.backward(), false, true, m.jump(), m.sneak(), m.sprint());
+                input.keyPresses =  new Input(m.forward(), m.backward(), false, true, m.jump(), m.shift(), m.sprint());
             }
         }
 
-        if (settings.backKey.isPressed() && settings.forwardKey.isPressed())
+        if (settings.keyDown.isDown() && settings.keyUp.isDown())
         {
-            if (this.lastForwardInput == InputHandler.ForwardBack.FORWARD)
+            if (this.lastForwardInput == ForwardBack.FORWARD)
             {
                 //m.movementForward = 1;
-                input.playerInput = new PlayerInput(true, false, m.left(), m.right(), m.jump(), m.sneak(), m.sprint());
+                input.keyPresses = new Input(true, false, m.left(), m.right(), m.jump(), m.shift(), m.sprint());
             }
-            else if (this.lastForwardInput == InputHandler.ForwardBack.BACK)
+            else if (this.lastForwardInput == ForwardBack.BACK)
             {
                 //m.movementForward = -1;
-                input.playerInput = new PlayerInput(false, true, m.left(), m.right(), m.jump(), m.sneak(), m.sprint());
+                input.keyPresses = new Input(false, true, m.left(), m.right(), m.jump(), m.shift(), m.sprint());
             }
         }
     }

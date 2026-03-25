@@ -4,14 +4,14 @@ import com.linearity.feedhelper.client.utils.ActiveDefenseRelated;
 import com.linearity.feedhelper.client.utils.ClientShotPredictor;
 import com.linearity.feedhelper.config.FeatureToggle;
 import fi.dy.masa.malilib.interfaces.IClientTickHandler;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import static com.linearity.feedhelper.client.FeedhelperClient.*;
 import static com.linearity.feedhelper.client.utils.ElytraHelper.avoidElytraCollisionLoop;
 
 public class ClientTickHandler implements IClientTickHandler {
     @Override
-    public void onClientTick(MinecraftClient client) {
+    public void onClientTick(Minecraft client) {
 
         if (FeatureToggle.FILL_LAVA.getBooleanValue()){
             fillLavaLoop(client);
@@ -41,6 +41,6 @@ public class ClientTickHandler implements IClientTickHandler {
             }
         }
 
-        new ClientShotPredictor(client).onClientTick();
+        ClientShotPredictor.onClientTick(client);
     }
 }

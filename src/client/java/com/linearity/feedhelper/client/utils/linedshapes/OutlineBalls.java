@@ -1,12 +1,5 @@
 package com.linearity.feedhelper.client.utils.linedshapes;
 
-import com.linearity.feedhelper.client.mixin.VertexConsumerProviderImmediateAcccessor;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.*;
-import net.minecraft.client.util.BufferAllocator;
-import net.minecraft.client.util.math.MatrixStack;
-import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -17,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class OutlineBalls {
 
-    static record SphereKey(float radius, int lat, int lon) {
+    record SphereKey(float radius, int lat, int lon) {
 
         @Override
         public boolean equals(Object o) {
@@ -31,7 +24,7 @@ public class OutlineBalls {
         }
     }
 
-    public static record Line(Vector3f a, Vector3f b) {}
+    public record Line(Vector3f a, Vector3f b) {}
 
 
     private static List<Line> getSphereLines(float radius, int latDivisions, int lonDivisions) {
@@ -79,10 +72,10 @@ public class OutlineBalls {
             return lines;
 //        });
     }
-    private static final Map<OutlineBalls.SphereKey, List<OutlineBalls.Line>> SPHERE_LINES_CACHE = new ConcurrentHashMap<>();
+    private static final Map<SphereKey, List<Line>> SPHERE_LINES_CACHE = new ConcurrentHashMap<>();
 
-    public static List<OutlineBalls.Line> getSphereLinesCached(float radius, int latDivisions, int lonDivisions) {
-        OutlineBalls.SphereKey key = new OutlineBalls.SphereKey(radius, latDivisions, lonDivisions);
+    public static List<Line> getSphereLinesCached(float radius, int latDivisions, int lonDivisions) {
+        SphereKey key = new SphereKey(radius, latDivisions, lonDivisions);
         return SPHERE_LINES_CACHE.computeIfAbsent(key, k -> getSphereLines(radius, latDivisions, lonDivisions));
     }
 

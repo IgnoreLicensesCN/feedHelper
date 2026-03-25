@@ -1,26 +1,25 @@
 package com.linearity.feedhelper.client.utils;
 
-import net.minecraft.block.ShapeContext;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.ChargedProjectilesComponent;
-import net.minecraft.component.type.FireworkExplosionComponent;
-import net.minecraft.enchantment.Enchantments;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.BowItem;
-import net.minecraft.item.CrossbowItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
-
+import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BowItem;
+import net.minecraft.world.item.CrossbowItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ChargedProjectiles;
+import net.minecraft.world.item.component.FireworkExplosion;
+import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 
 public class ProjectilePredictionRenderer {
 
@@ -34,12 +33,12 @@ public class ProjectilePredictionRenderer {
      * @param affectedByWater 是否受水阻力
      * @return List<Vec3d> 轨迹点
      */
-    public static List<Vec3d> predictProjectilePath(Vec3d startPos, Vec3d initialVelocity,
-                                                    ClientWorld world, int maxTicks,
+    public static List<Vec3> predictProjectilePath(Vec3 startPos, Vec3 initialVelocity,
+                                                    ClientLevel world, int maxTicks,
                                                     boolean affectedByGravity, boolean affectedByWater) {
-        List<Vec3d> path = new ArrayList<>();
-        Vec3d pos = startPos;
-        Vec3d vel = initialVelocity;
+        List<Vec3> path = new ArrayList<>();
+        Vec3 pos = startPos;
+        Vec3 vel = initialVelocity;
 
         path.add(pos);
 
@@ -50,17 +49,17 @@ public class ProjectilePredictionRenderer {
         double tickLength = 1.0; // 每 tick 模拟一次
 
         for (int tick = 0; tick < maxTicks; tick++) {
-            Vec3d nextPos = pos.add(vel.multiply(tickLength));
+            Vec3 nextPos = pos.add(vel.scale(tickLength));
 
             // 射线检测方块
-            RaycastContext ctx = new RaycastContext(pos, nextPos,
-                    RaycastContext.ShapeType.COLLIDER,
-                    RaycastContext.FluidHandling.ANY,
-                    ShapeContext.absent()
+            ClipContext ctx = new ClipContext(pos, nextPos,
+                    ClipContext.Block.COLLIDER,
+                    ClipContext.Fluid.ANY,
+                    CollisionContext.empty()
             );
-            BlockHitResult hit = world.raycast(ctx);
+            BlockHitResult hit = world.clip(ctx);
             if (hit.getType() != HitResult.Type.MISS) {
-                path.add(hit.getPos());
+                path.add(hit.getLocation());
                 break;
             }
 
@@ -68,8 +67,8 @@ public class ProjectilePredictionRenderer {
             path.add(pos);
 
             // 水中阻力
-            boolean inWater = affectedByWater && world.getBlockState(BlockPos.ofFloored(pos)).getFluidState().isIn(FluidTags.WATER);
-            vel = vel.multiply(inWater ? dragWater : dragAir);
+            boolean inWater = affectedByWater && world.getBlockState(BlockPos.containing(pos)).getFluidState().is(FluidTags.WATER);
+            vel = vel.scale(inWater ? dragWater : dragAir);
 
             // 重力
             if (affectedByGravity) {
@@ -83,89 +82,89 @@ public class ProjectilePredictionRenderer {
     /**
      * 渲染投射物路径
      */
-    public static void renderProjectilePath(MatrixStack matrices, List<Vec3d> path, Vec3d cameraPos,
+    public static void renderProjectilePath(PoseStack matrices, List<Vec3> path, Vec3 cameraPos,
                                             float[] color, double beamWidth, float sphereRadius) {
         if (path.isEmpty()) return;
 
-        matrices.push();
+        matrices.pushPose();
 
         // 渲染光束
         for (int i = ((int)Math.floor(path.size()*0.15)); i < path.size() - 1; i++) {
-            Vec3d start = path.get(i).subtract(cameraPos);
-            Vec3d end = path.get(i + 1).subtract(cameraPos);
+            Vec3 start = path.get(i).subtract(cameraPos);
+            Vec3 end = path.get(i + 1).subtract(cameraPos);
             RenderingUtils.renderBeam(matrices, start, end, color, (float) beamWidth);
         }
 
         // 渲染终点小球
-        Vec3d hitPos = path.get(path.size() - 1).subtract(cameraPos);
-        matrices.push();
+        Vec3 hitPos = path.get(path.size() - 1).subtract(cameraPos);
+        matrices.pushPose();
         matrices.translate(hitPos.x, hitPos.y, hitPos.z);
         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, sphereRadius, color, 8, 8);
-        matrices.pop();
+        matrices.popPose();
 
     }
 
     /**
      * 玩家拉弓预测
      */
-    public static void renderPlayerBowPrediction(PlayerEntity player, ItemStack bow,
-                                                 ClientWorld world, MatrixStack matrices,
-                                                 Vec3d cameraPos, float tickDelta) {
-        int useTicks = player.getItemUseTime();
-        float charge = BowItem.getPullProgress(useTicks);
+    public static void renderPlayerBowPrediction(Player player, ItemStack bow,
+                                                 ClientLevel world, PoseStack matrices,
+                                                 Vec3 cameraPos, float tickDelta) {
+        int useTicks = player.getTicksUsingItem();
+        float charge = BowItem.getPowerForTime(useTicks);
 
-        Vec3d startPos = player.getEyePos();
-        Vec3d velocity = player.getRotationVector().multiply(charge * 3.0); // Minecraft 弓初速度
+        Vec3 startPos = player.getEyePosition();
+        Vec3 velocity = player.getLookAngle().scale(charge * 3.0); // Minecraft 弓初速度
 
-        List<Vec3d> path = predictProjectilePath(startPos, velocity, world, 50, true, true);
+        List<Vec3> path = predictProjectilePath(startPos, velocity, world, 50, true, true);
         renderProjectilePath(matrices, path, cameraPos, new float[]{1f, 0.9f, 0.1f, 0.5f}, 0.1, 0.5f);
     }
 
-    public static void renderPlayerCrossbowPrediction(PlayerEntity player,
+    public static void renderPlayerCrossbowPrediction(Player player,
                                                        ItemStack stack,
-                                                       ClientWorld world,
-                                                       MatrixStack matrices,
-                                                       Vec3d cameraPos,
+                                                       ClientLevel world,
+                                                       PoseStack matrices,
+                                                       Vec3 cameraPos,
                                                        float tickDelta) {
         if (!(stack.getItem() instanceof CrossbowItem) || !CrossbowItem.isCharged(stack)) return;
 
-        ChargedProjectilesComponent projectiles = stack.getOrDefault(DataComponentTypes.CHARGED_PROJECTILES, ChargedProjectilesComponent.DEFAULT);
+        ChargedProjectiles projectiles = stack.getOrDefault(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.EMPTY);
 
-        boolean multishot = stack.getEnchantments().getEnchantments().stream()
-                .anyMatch(e -> e.getKey().map(k -> k == Enchantments.MULTISHOT).orElse(false));
+        boolean multishot = stack.getEnchantments().keySet().stream()
+                .anyMatch(e -> e.unwrapKey().map(k -> k == Enchantments.MULTISHOT).orElse(false));
 
         float[] angles = multishot ? new float[]{0f, 10f, -10f} : new float[]{0f};
 
-        Vec3d startPos = player.getEyePos();
-        float yaw = player.getYaw(tickDelta);
-        float pitch = player.getPitch(tickDelta);
+        Vec3 startPos = player.getEyePosition();
+        float yaw = player.getViewYRot(tickDelta);
+        float pitch = player.getViewXRot(tickDelta);
         double yawRad = Math.toRadians(-yaw);
         double pitchRad = Math.toRadians(-pitch);
 
-        Vec3d look = new Vec3d(
+        Vec3 look = new Vec3(
                 Math.sin(yawRad) * Math.cos(pitchRad),
                 Math.sin(pitchRad),
                 Math.cos(yawRad) * Math.cos(pitchRad)
         ).normalize();
 
-        Vec3d right = new Vec3d(
+        Vec3 right = new Vec3(
                 Math.cos(yawRad),
                 0,
                 -Math.sin(yawRad)
         ).normalize();
 
-        for (ItemStack proj : projectiles.getProjectiles()) {
+        for (ItemStack proj : projectiles.getItems()) {
             for (float angleDeg : angles) {
                 double angleRad = Math.toRadians(angleDeg);
-                Vec3d rotated = look.multiply(Math.cos(angleRad))
-                        .add(right.multiply(Math.sin(angleRad)))
+                Vec3 rotated = look.scale(Math.cos(angleRad))
+                        .add(right.scale(Math.sin(angleRad)))
                         .normalize();
 
-                boolean isFirework = proj.isOf(Items.FIREWORK_ROCKET);
-                Vec3d velocity = rotated.multiply(isFirework ? 1.6f : 2.5f);
+                boolean isFirework = proj.is(Items.FIREWORK_ROCKET);
+                Vec3 velocity = rotated.scale(isFirework ? 1.6f : 2.5f);
                 int maxTicks = 50;
 
-                List<Vec3d> path = predictProjectilePath(startPos, velocity, world, maxTicks,
+                List<Vec3> path = predictProjectilePath(startPos, velocity, world, maxTicks,
                         !isFirework, true);
 
                 if (path.isEmpty()) continue;
@@ -175,9 +174,9 @@ public class ProjectilePredictionRenderer {
                 color[3] = 0.5f; // 半透明
 
                 if (isFirework) {
-                    var fireworkComp = proj.getComponents().get(DataComponentTypes.FIREWORKS);
+                    var fireworkComp = proj.getComponents().get(DataComponents.FIREWORKS);
                     if (fireworkComp != null && !fireworkComp.explosions().isEmpty()) {
-                        FireworkExplosionComponent explosion = fireworkComp.explosions().get(0);
+                        FireworkExplosion explosion = fireworkComp.explosions().get(0);
                         if (!explosion.colors().isEmpty()) {
                             int c = explosion.colors().getInt(0);
                             color[0] = ((c >> 16) & 0xFF) / 255f;
@@ -200,21 +199,21 @@ public class ProjectilePredictionRenderer {
                 float beamWidth = isFirework ? 0.05f : 0.1f;
 
                 // 渲染光束
-                matrices.push();
+                matrices.pushPose();
                 for (int i = (int)Math.floor(path.size() * 0.2); i < path.size() - 1; i++) {
-                    Vec3d start = path.get(i).subtract(cameraPos);
-                    Vec3d end = path.get(i + 1).subtract(cameraPos);
+                    Vec3 start = path.get(i).subtract(cameraPos);
+                    Vec3 end = path.get(i + 1).subtract(cameraPos);
                     RenderingUtils.renderBeam(matrices, start, end, color, beamWidth);
                 }
-                matrices.pop();
+                matrices.popPose();
 
                 // 渲染落点小球
-                Vec3d hitPos = path.get(path.size() - 1).subtract(cameraPos);
+                Vec3 hitPos = path.get(path.size() - 1).subtract(cameraPos);
                 float radius = isFirework ? 1.5f : 0.5f;
-                matrices.push();
+                matrices.pushPose();
                 matrices.translate(hitPos.x, hitPos.y, hitPos.z);
                 RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color, 16, 16);
-                matrices.pop();
+                matrices.popPose();
             }
         }
     }
@@ -225,12 +224,12 @@ public class ProjectilePredictionRenderer {
     /**
      * 玩家三叉戟预测
      */
-    public static void renderPlayerTridentPrediction(PlayerEntity player, ItemStack trident,
-                                                     ClientWorld world, MatrixStack matrices,
-                                                     Vec3d cameraPos, float tickDelta) {
-        Vec3d startPos = player.getEyePos();
-        Vec3d velocity = player.getRotationVector().multiply(2.5); // 三叉戟初速度
-        List<Vec3d> path = predictProjectilePath(startPos, velocity, world, 50, true, true);
+    public static void renderPlayerTridentPrediction(Player player, ItemStack trident,
+                                                     ClientLevel world, PoseStack matrices,
+                                                     Vec3 cameraPos, float tickDelta) {
+        Vec3 startPos = player.getEyePosition();
+        Vec3 velocity = player.getLookAngle().scale(2.5); // 三叉戟初速度
+        List<Vec3> path = predictProjectilePath(startPos, velocity, world, 50, true, true);
         renderProjectilePath(matrices, path, cameraPos, new float[]{0.5f, 0.5f, 1f, 0.5f}, 0.1, 0.2f);
     }
 }

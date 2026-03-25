@@ -1,11 +1,10 @@
 package com.linearity.feedhelper.client.utils;
 
 import com.google.common.collect.MapMaker;
-import net.minecraft.entity.Entity;
-
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import net.minecraft.world.entity.Entity;
 
 public class ShotTracker {
 

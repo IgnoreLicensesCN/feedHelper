@@ -1,37 +1,41 @@
 package com.linearity.feedhelper.client.utils;
 
 import com.linearity.feedhelper.client.mixin.CreeperEntityAccessor;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.ChargedProjectilesComponent;
-import net.minecraft.component.type.FireworkExplosionComponent;
-import net.minecraft.enchantment.Enchantments;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.CreeperEntity;
-import net.minecraft.entity.mob.MagmaCubeEntity;
-import net.minecraft.entity.mob.SlimeEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.projectile.ArrowEntity;
-import net.minecraft.entity.projectile.DragonFireballEntity;
-import net.minecraft.entity.projectile.SmallFireballEntity;
-import net.minecraft.entity.projectile.WitherSkullEntity;
-import net.minecraft.item.*;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.monster.Creeper;
+import net.minecraft.world.entity.monster.MagmaCube;
+import net.minecraft.world.entity.monster.Slime;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
+import net.minecraft.world.entity.projectile.hurtingprojectile.SmallFireball;
+import net.minecraft.world.entity.projectile.hurtingprojectile.WitherSkull;
+import net.minecraft.world.item.BowItem;
+import net.minecraft.world.item.CrossbowItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.TridentItem;
+import net.minecraft.world.item.component.ChargedProjectiles;
+import net.minecraft.world.item.component.FireworkExplosion;
+import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import org.joml.Vector3f;
 
 import java.util.*;
@@ -43,46 +47,46 @@ import static com.linearity.feedhelper.client.utils.RenderingUtils.*;
 public class RangingSystemRelated {
 
     public static final float beamWidth = 0.2f;
-    public static void rangingSystemLoopRendering(MinecraftClient client,MatrixStack matrices,float tickDelta) {
+    public static void rangingSystemLoopRendering(Minecraft client,PoseStack matrices,float tickDelta) {
         renderForPredictEntities(client,matrices,tickDelta);
     }
-    public static void rangingSystemLoopRenderingOnHUD(MinecraftClient client, DrawContext context, float tickDelta) {
+    public static void rangingSystemLoopRenderingOnHUD(Minecraft client, GuiGraphics context, float tickDelta) {
 
         renderArrowHitTargetIfExists(client,context,tickDelta);
 
     }
 
-    public static void renderArrowHitTargetIfExists(MinecraftClient client, DrawContext context, float tickDelta) {
+    public static void renderArrowHitTargetIfExists(Minecraft client, GuiGraphics context, float tickDelta) {
         var player = client.player;
-        var world = client.world;
+        var world = client.level;
         if (player == null || world == null) return;
 
-        List<Vec3d> arrowPositions = new ArrayList<>();
-        List<Vec3d> velocityVectors = new ArrayList<>();
+        List<Vec3> arrowPositions = new ArrayList<>();
+        List<Vec3> velocityVectors = new ArrayList<>();
 
         // 玩家拉弓中
-        if (player.isUsingItem() && (player.getActiveItem().getItem() instanceof BowItem)) {
-            int useTicks = player.getItemUseTime();
+        if (player.isUsingItem() && (player.getUseItem().getItem() instanceof BowItem)) {
+            int useTicks = player.getTicksUsingItem();
             float f = useTicks / 20.0f;
             float velocity = (f * f + f * 2.0f) / 3.0f;
             velocity = Math.min(velocity, 1.0f);
 
-            Vec3d startPos = player.getEyePos();
-            Vec3d velocityVec = player.getRotationVec(tickDelta).multiply(velocity * 3.0);
+            Vec3 startPos = player.getEyePosition();
+            Vec3 velocityVec = player.getViewVector(tickDelta).scale(velocity * 3.0);
 
             arrowPositions.add(startPos);
             velocityVectors.add(velocityVec);
         }
 
         // 检查主手和副手的弩
-        List<ItemStack> crossbows = Arrays.asList(player.getMainHandStack(), player.getOffHandStack());
+        List<ItemStack> crossbows = Arrays.asList(player.getMainHandItem(), player.getOffhandItem());
         for (ItemStack stack : crossbows) {
             if (!(stack.getItem() instanceof CrossbowItem) || !CrossbowItem.isCharged(stack)) continue;
 
-            ChargedProjectilesComponent projectiles = stack.getOrDefault(DataComponentTypes.CHARGED_PROJECTILES, ChargedProjectilesComponent.DEFAULT);
+            ChargedProjectiles projectiles = stack.getOrDefault(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.EMPTY);
             AtomicBoolean hasRocketFlag = new AtomicBoolean(false);
-            for (ItemStack proj : projectiles.getProjectiles()) {
-                if (proj.isOf(Items.FIREWORK_ROCKET)) {
+            for (ItemStack proj : projectiles.getItems()) {
+                if (proj.is(Items.FIREWORK_ROCKET)) {
                     hasRocketFlag.set(true);
                     break;
                 }
@@ -91,7 +95,7 @@ public class RangingSystemRelated {
                 continue;
             }
             AtomicBoolean hasMultishot = new AtomicBoolean(false);
-            stack.getEnchantments().getEnchantments().forEach(e -> e.getKey().ifPresent(key -> {
+            stack.getEnchantments().keySet().forEach(e -> e.unwrapKey().ifPresent(key -> {
                 if (key == Enchantments.MULTISHOT) hasMultishot.set(true);
             }));
 
@@ -100,18 +104,18 @@ public class RangingSystemRelated {
             float speed = 3.15f;
 
             for (float angle : angles) {
-                Vec3d startPos = player.getEyePos();
+                Vec3 startPos = player.getEyePosition();
                 // 基于玩家旋转和角度偏移
-                float yaw = player.getYaw(tickDelta);
-                float pitch = player.getPitch(tickDelta);
+                float yaw = player.getViewYRot(tickDelta);
+                float pitch = player.getViewXRot(tickDelta);
                 double yawRad = Math.toRadians(-yaw + angle); // yaw 偏移
                 double pitchRad = Math.toRadians(-pitch);
 
-                Vec3d vel = new Vec3d(
+                Vec3 vel = new Vec3(
                         Math.sin(yawRad) * Math.cos(pitchRad),
                         Math.sin(pitchRad),
                         Math.cos(yawRad) * Math.cos(pitchRad)
-                ).normalize().multiply(speed);
+                ).normalize().scale(speed);
 
                 arrowPositions.add(startPos);
                 velocityVectors.add(vel);
@@ -122,32 +126,32 @@ public class RangingSystemRelated {
 
         // 模拟每条箭的轨迹
         for (int idx = 0; idx < arrowPositions.size(); idx++) {
-            Vec3d arrowPos = arrowPositions.get(idx);
-            Vec3d velocityVec = velocityVectors.get(idx);
+            Vec3 arrowPos = arrowPositions.get(idx);
+            Vec3 velocityVec = velocityVectors.get(idx);
 
             Entity targetEntity = null;
             BlockHitResult targetBlock = null;
-            Vec3d hitPos = null;
+            Vec3 hitPos = null;
             float tickStep = 0f;
 
             // 获取附近实体列表
             List<Entity> entities = new LinkedList<>();
-            world.getEntities().forEach(entity -> {
+            world.entitiesForRendering().forEach(entity -> {
                 if (entity != player && entity.isAlive() && !entity.isSpectator()) entities.add(entity);
             });
 
             // 模拟箭矢轨迹
             for (int i = 0; i < 200; i++) {
-                Vec3d nextPos = arrowPos.add(velocityVec);
+                Vec3 nextPos = arrowPos.add(velocityVec);
 
                 // 方块碰撞
-                BlockHitResult blockHit = world.raycast(new RaycastContext(
-                        arrowPos, nextPos, RaycastContext.ShapeType.OUTLINE,
-                        RaycastContext.FluidHandling.ANY, player
+                BlockHitResult blockHit = world.clip(new ClipContext(
+                        arrowPos, nextPos, ClipContext.Block.OUTLINE,
+                        ClipContext.Fluid.ANY, player
                 ));
                 if (blockHit.getType() != HitResult.Type.MISS) {
                     targetBlock = blockHit;
-                    hitPos = new Vec3d(
+                    hitPos = new Vec3(
                             blockHit.getBlockPos().getX() + 0.5,
                             blockHit.getBlockPos().getY() + 0.5,
                             blockHit.getBlockPos().getZ() + 0.5
@@ -157,9 +161,9 @@ public class RangingSystemRelated {
 
                 // 实体碰撞
                 for (Entity entity : entities) {
-                    Vec3d predictedPos = entity.getEntityPos().add(entity.getVelocity().multiply(tickStep));
-                    Box predictedBox = entity.getBoundingBox().offset(predictedPos.subtract(entity.getEntityPos()));
-                    Optional<Vec3d> intersect = predictedBox.raycast(arrowPos, nextPos);
+                    Vec3 predictedPos = entity.position().add(entity.getDeltaMovement().scale(tickStep));
+                    AABB predictedBox = entity.getBoundingBox().move(predictedPos.subtract(entity.position()));
+                    Optional<Vec3> intersect = predictedBox.clip(arrowPos, nextPos);
                     if (intersect.isPresent()) {
                         targetEntity = entity;
                         hitPos = intersect.get();
@@ -170,13 +174,13 @@ public class RangingSystemRelated {
 
                 // 更新箭矢位置和速度
                 arrowPos = nextPos;
-                velocityVec = velocityVec.multiply(0.99).add(0, -0.05, 0);
+                velocityVec = velocityVec.scale(0.99).add(0, -0.05, 0);
                 tickStep += 1f;
             }
 
             if (hitPos == null) continue;
 
-            Vec3d screen = RenderingUtils.worldToScreen(client, hitPos);
+            Vec3 screen = RenderingUtils.worldToScreen(client, hitPos);
             if (screen == null) continue;
 
             int x = (int) screen.x;
@@ -187,73 +191,73 @@ public class RangingSystemRelated {
                     : world.getBlockState(targetBlock.getBlockPos()).getBlock().getName().getString();
             if (name == null) continue;
 
-            String printText = name + " " + String.format("x=%.3f,y=%.3f,z=%.3f", hitPos.getX(), hitPos.getY(), hitPos.getZ());
-            context.drawText(client.textRenderer, printText, x - RenderingUtils.rectSize, y + RenderingUtils.rectSize, 0xFF39C5BB, false);
+            String printText = name + " " + String.format("x=%.3f,y=%.3f,z=%.3f", hitPos.x(), hitPos.y(), hitPos.z());
+            context.drawString(client.font, printText, x - RenderingUtils.rectSize, y + RenderingUtils.rectSize, 0xFF39C5BB, false);
         }
     }
 
 
-    public static void renderForPredictEntities(MinecraftClient client, MatrixStack matrices, float tickDelta) {
-        var world = client.world;
+    public static void renderForPredictEntities(Minecraft client, PoseStack matrices, float tickDelta) {
+        var world = client.level;
         if (world == null) return;
 
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
 
-        var cameraPos = camera.getPos();
+        var cameraPos = camera.position();
 
-        for (Entity entity : world.getEntities()) {
+        for (Entity entity : world.entitiesForRendering()) {
 
             // Dragon fireball
-            if (entity instanceof DragonFireballEntity fireball) {
+            if (entity instanceof DragonFireball fireball) {
                 renderDragonFireballHitRange(client,world,fireball, matrices, tickDelta);
                 continue;
             }
 
             // Wither skull
-            if (entity instanceof WitherSkullEntity skull) {
+            if (entity instanceof WitherSkull skull) {
                 renderWitherFiringSkullHitRange(client,world,skull, matrices, tickDelta, cameraPos);
                 continue;
             }
-            if (entity instanceof SlimeEntity slime){
+            if (entity instanceof Slime slime){
                 renderSlimeJumping(client,world,slime, matrices, tickDelta);
                 continue;
             }
-            if (entity instanceof CreeperEntity creeper) {
+            if (entity instanceof Creeper creeper) {
                 renderCreeperBoomRange(client,world,creeper, matrices, tickDelta);
                 continue;
             }
-            if (entity instanceof SmallFireballEntity smallFireball){
+            if (entity instanceof SmallFireball smallFireball){
                 renderSmallFireballHitLocation(client,world,smallFireball, matrices, tickDelta);
                 continue;
             }
-            if (entity instanceof ArrowEntity arrow){
+            if (entity instanceof Arrow arrow){
                 renderArrowPredictedPath(client, world, arrow, matrices, tickDelta);
                 continue;
             }
-            if (entity instanceof PlayerEntity player){
+            if (entity instanceof Player player){
                 renderPlayerWeaponPrediction(client, world,player, matrices, tickDelta);
                 continue;
             }
         }
     }
-    public static void renderSmallFireballHitLocation(MinecraftClient client,
-                                                      ClientWorld world,
-                                                      SmallFireballEntity fireball,
-                                                      MatrixStack matrices,
+    public static void renderSmallFireballHitLocation(Minecraft client,
+                                                      ClientLevel world,
+                                                      SmallFireball fireball,
+                                                      PoseStack matrices,
                                                       float tickDelta) {
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
-        var cameraPos = camera.getPos();
+        var cameraPos = camera.position();
 
         // 预测火球落点
-        Vec3d hitPos = predictFireballHitPos(fireball.getEntityPos(), fireball.getVelocity(), world);
+        Vec3 hitPos = predictFireballHitPos(fireball.position(), fireball.getDeltaMovement(), world);
 
         // 火球影响范围半径（小火球一般较小）
         float radius = 1.5f;
 
         // 保存矩阵状态
-        matrices.push();
+        matrices.pushPose();
 
         // 平移到落点相对于摄像机的位置
         matrices.translate(hitPos.x - cameraPos.x,
@@ -270,19 +274,19 @@ public class RangingSystemRelated {
         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color,
                 latDivisions, lonDivisions);
 
-        matrices.pop();
+        matrices.popPose();
 
         // 渲染光束，从火球当前位置指向落点
-        Vec3d start = fireball.getEntityPos().subtract(cameraPos);
-        Vec3d end = hitPos.subtract(cameraPos);
+        Vec3 start = fireball.position().subtract(cameraPos);
+        Vec3 end = hitPos.subtract(cameraPos);
         float beamWidth = 0.05f; // 光束宽度
         RenderingUtils.renderBeam(matrices, start, end, color, beamWidth);
     }
 
-    public static List<Vec3d> predictArrowPath(Vec3d startPos, Vec3d velocity, ClientWorld world, int maxTicks) {
-        List<Vec3d> path = new ArrayList<>();
-        Vec3d pos = startPos;
-        Vec3d vel = velocity;
+    public static List<Vec3> predictArrowPath(Vec3 startPos, Vec3 velocity, ClientLevel world, int maxTicks) {
+        List<Vec3> path = new ArrayList<>();
+        Vec3 pos = startPos;
+        Vec3 vel = velocity;
 
         float gravity = 0.05f;
         float dragAir = 0.99f;
@@ -291,18 +295,18 @@ public class RangingSystemRelated {
         for (int tick = 0; tick < maxTicks; tick++) {
             path.add(pos);
 
-            Vec3d nextPos = pos.add(vel);
+            Vec3 nextPos = pos.add(vel);
 
             // 射线检测方块/实体
-            var hit = world.raycast(new RaycastContext(
+            var hit = world.clip(new ClipContext(
                     pos, nextPos,
-                    RaycastContext.ShapeType.COLLIDER,
-                    RaycastContext.FluidHandling.SOURCE_ONLY, // 可以检测水
-                    ShapeContext.absent()
+                    ClipContext.Block.COLLIDER,
+                    ClipContext.Fluid.NONE, // 可以检测水
+                    CollisionContext.empty()
             ));
 
-            if (hit.getType() != HitResult.Type.MISS) {
-                path.add(hit.getPos());
+            if (hit.getType() != HitResult.Type.MISS && world.getBlockState(hit.getBlockPos()).getFluidState().isEmpty()) {
+                path.add(hit.getLocation());
                 break;
             }
 
@@ -310,35 +314,35 @@ public class RangingSystemRelated {
             pos = nextPos;
 
             // 判断是否在水中减速
-            if (world.getFluidState(BlockPos.ofFloored(pos)).isIn(FluidTags.WATER)) {
-                vel = vel.multiply(dragWater);
+            if (world.getFluidState(BlockPos.containing(pos)).is(FluidTags.WATER)) {
+                vel = vel.scale(dragWater);
             } else {
-                vel = vel.multiply(dragAir);
+                vel = vel.scale(dragAir);
             }
 
             // 受重力影响
             vel = vel.add(0, -gravity, 0);
 
             // 速度过小提前停止
-            if (vel.lengthSquared() < 1e-6) break;
+            if (vel.lengthSqr() < 1e-6) break;
         }
 
         return path;
     }
 
-    public static void renderPlayerWeaponPrediction(MinecraftClient client,
-                                                    ClientWorld world,
-                                                    PlayerEntity player,
-                                                    MatrixStack matrices,
+    public static void renderPlayerWeaponPrediction(Minecraft client,
+                                                    ClientLevel world,
+                                                    Player player,
+                                                    PoseStack matrices,
                                                     float tickDelta) {
         if (player == null || world == null) return;
 
-        var camera = MinecraftClient.getInstance().getEntityRenderDispatcher().camera;
+        var camera = Minecraft.getInstance().getEntityRenderDispatcher().camera;
         if (camera == null) return;
-        Vec3d cameraPos = camera.getPos();
+        Vec3 cameraPos = camera.position();
 
         // 遍历主手和副手
-        List<ItemStack> hands = Arrays.asList(player.getMainHandStack(), player.getOffHandStack());
+        List<ItemStack> hands = Arrays.asList(player.getMainHandItem(), player.getOffhandItem());
         for (ItemStack stack : hands) {
             if (stack.isEmpty()) continue;
 
@@ -352,51 +356,52 @@ public class RangingSystemRelated {
         }
     }
 
-    private static void renderFireworkPrediction(PlayerEntity player,
+    private static void renderFireworkPrediction(Player player,
                                                  ItemStack rocket,
-                                                 ClientWorld world,
-                                                 MatrixStack matrices,
-                                                 Vec3d cameraPos,
+                                                 ClientLevel world,
+                                                 PoseStack matrices,
+                                                 Vec3 cameraPos,
                                                  float[] angles) {
-        var fireworkComp = rocket.getComponents().get(DataComponentTypes.FIREWORKS);
+        var fireworkComp = rocket.getComponents().get(DataComponents.FIREWORKS);
         if (fireworkComp == null) return;
 
         int flight = fireworkComp.flightDuration();
-        List<FireworkExplosionComponent> explosions = fireworkComp.explosions();
+        List<FireworkExplosion> explosions = fireworkComp.explosions();
 
-        Vec3d startPos = player.getEyePos();
-        float yaw = player.getYaw();
-        float pitch = player.getPitch();
+        Vec3 startPos = player.getEyePosition();
+        float yaw = player.getYRot();
+        float pitch = player.getXRot();
 
         double yawRad = Math.toRadians(-yaw);
         double pitchRad = Math.toRadians(-pitch);
 
-        Vec3d look = new Vec3d(
+        Vec3 look = new Vec3(
                 Math.sin(yawRad) * Math.cos(pitchRad),
                 Math.sin(pitchRad),
                 Math.cos(yawRad) * Math.cos(pitchRad)
         ).normalize();
 
-        Vec3d right = new Vec3d(Math.cos(yawRad), 0, -Math.sin(yawRad)).normalize();
+        Vec3 right = new Vec3(Math.cos(yawRad), 0, -Math.sin(yawRad)).normalize();
 
         for (float angleDeg : angles) {
             double angleRad = Math.toRadians(angleDeg);
-            Vec3d rotated = look.multiply(Math.cos(angleRad))
-                    .add(right.multiply(Math.sin(angleRad))).normalize();
+            Vec3 rotated = look.scale(Math.cos(angleRad))
+                    .add(right.scale(Math.sin(angleRad))).normalize();
 
-            Vec3d velocity = rotated.multiply(1.6f);
-            Vec3d endPos = startPos.add(velocity.multiply(flight * 10.0));
+            Vec3 velocity = rotated.scale(1.6f);
+            Vec3 endPos = startPos.add(velocity.scale(flight * 10.0));
 
             // 射线检测碰撞方块
-            RaycastContext ctx = new RaycastContext(startPos, endPos,
-                    RaycastContext.ShapeType.COLLIDER,
-                    RaycastContext.FluidHandling.NONE,
-                    player);
-            BlockHitResult result = world.raycast(ctx);
-            Vec3d hitPos = result.getType() != HitResult.Type.MISS ? result.getPos() : endPos;
+            ClipContext ctx = new ClipContext(startPos, endPos,
+                    ClipContext.Block.COLLIDER,
+                    ClipContext.Fluid.NONE,
+                    player
+            );
+            BlockHitResult result = world.clip(ctx);
+            Vec3 hitPos = result.getType() != HitResult.Type.MISS ? result.getLocation() : endPos;
 
             // 渲染每个爆炸效果
-            for (FireworkExplosionComponent explosion : explosions) {
+            for (FireworkExplosion explosion : explosions) {
                 float radius = switch (explosion.shape()) {
                     case SMALL_BALL -> 2.0f;
                     case LARGE_BALL -> 3.0f;
@@ -405,96 +410,96 @@ public class RangingSystemRelated {
                     case BURST -> 2.5f;
                 };
                 float[] color = new float[]{1f, 0.9f, 0.1f, 0.5f};
-                matrices.push();
+                matrices.pushPose();
                 matrices.translate(hitPos.x - cameraPos.x, hitPos.y - cameraPos.y, hitPos.z - cameraPos.z);
                 RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color, 32, 32);
-                matrices.pop();
+                matrices.popPose();
             }
         }
     }
 
-    private static void renderArrowPrediction(PlayerEntity player,
+    private static void renderArrowPrediction(Player player,
                                               ItemStack arrow,
-                                              ClientWorld world,
-                                              MatrixStack matrices,
-                                              Vec3d cameraPos,
+                                              ClientLevel world,
+                                              PoseStack matrices,
+                                              Vec3 cameraPos,
                                               float[] angles) {
 
-        Vec3d startPos = player.getEyePos();
-        float yaw = player.getYaw();
-        float pitch = player.getPitch();
+        Vec3 startPos = player.getEyePosition();
+        float yaw = player.getYRot();
+        float pitch = player.getXRot();
 
         double yawRad = Math.toRadians(-yaw);
         double pitchRad = Math.toRadians(-pitch);
 
-        Vec3d look = new Vec3d(
+        Vec3 look = new Vec3(
                 Math.sin(yawRad) * Math.cos(pitchRad),
                 Math.sin(pitchRad),
                 Math.cos(yawRad) * Math.cos(pitchRad)
         ).normalize();
 
-        Vec3d right = new Vec3d(Math.cos(yawRad), 0, -Math.sin(yawRad)).normalize();
+        Vec3 right = new Vec3(Math.cos(yawRad), 0, -Math.sin(yawRad)).normalize();
 
         for (float angleDeg : angles) {
             double angleRad = Math.toRadians(angleDeg);
-            Vec3d rotated = look.multiply(Math.cos(angleRad))
-                    .add(right.multiply(Math.sin(angleRad))).normalize();
+            Vec3 rotated = look.scale(Math.cos(angleRad))
+                    .add(right.scale(Math.sin(angleRad))).normalize();
 
             double speed = 3.0; // 初速度
-            Vec3d velocity = rotated.multiply(speed);
+            Vec3 velocity = rotated.scale(speed);
 
-            List<Vec3d> path = predictProjectilePath(startPos, velocity, world, 50,true,true); // 50 tick 外推
+            List<Vec3> path = predictProjectilePath(startPos, velocity, world, 50,true,true); // 50 tick 外推
 
             renderProjectilePath(matrices, path, cameraPos, new float[]{1f, 0.9f, 0.1f, 0.5f}, 0.03f, 0.2f);
         }
     }
 
-    private static void renderProjectilePath(MatrixStack matrices,
-                                             List<Vec3d> path,
-                                             Vec3d cameraPos,
+    private static void renderProjectilePath(PoseStack matrices,
+                                             List<Vec3> path,
+                                             Vec3 cameraPos,
                                              float[] color,
                                              float beamWidth,
                                              float hitRadius) {
         if (path.isEmpty()) return;
 
-        matrices.push();
+        matrices.pushPose();
         for (int i = 0; i < path.size() - 1; i++) {
-            Vec3d start = path.get(i).subtract(cameraPos);
-            Vec3d end = path.get(i + 1).subtract(cameraPos);
+            Vec3 start = path.get(i).subtract(cameraPos);
+            Vec3 end = path.get(i + 1).subtract(cameraPos);
             RenderingUtils.renderBeam(matrices, start, end, color, beamWidth);
         }
 
-        Vec3d hitPos = path.get(path.size() - 1).subtract(cameraPos);
-        matrices.push();
+        Vec3 hitPos = path.get(path.size() - 1).subtract(cameraPos);
+        matrices.pushPose();
         matrices.translate(hitPos.x, hitPos.y, hitPos.z);
         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, hitRadius, color, 32, 32);
-        matrices.pop();
-        matrices.pop();
+        matrices.popPose();
+        matrices.popPose();
     }
 
 
 
-    public static List<Vec3d> predictPlayerArrowPath(PlayerEntity player, int maxTicks, ClientWorld world) {
-        List<Vec3d> path = new ArrayList<>();
+    public static List<Vec3> predictPlayerArrowPath(Player player, int maxTicks, ClientLevel world) {
+        List<Vec3> path = new ArrayList<>();
 
         // 玩家手持物
-        ItemStack stack = player.getActiveItem();
+        ItemStack stack = player.getUseItem();
         if (!(stack.getItem() instanceof BowItem || stack.getItem() instanceof CrossbowItem)) return path;
 
         // 拉弓进度
         float charge = 1f; // 默认为满拉弓，或者根据 getItemUseTime()/maxUseTime() 计算
         if (stack.getItem() instanceof BowItem) {
-            int useTicks = player.getItemUseTime();
-            int maxUse = stack.getMaxUseTime(player);
+            int useTicks = player.getTicksUsingItem();
+            int maxUse = stack.getUseDuration(player);
             charge = Math.min(useTicks / 20f, 1f);
         }
 
         // 初速度
         double maxSpeed = 3.0; // Minecraft 默认箭初速度
-        Vec3d velocity = player.getRotationVector().multiply(charge * maxSpeed);
+        Vec3 velocity = player.getLookAngle().scale(charge * maxSpeed);
 
         // 初始位置
-        Vec3d pos = player.getEyePos();
+        Vec3 pos = player.getEyePosition();
 
         float gravity = 0.05f;
         float dragAir = 0.99f;
@@ -503,50 +508,50 @@ public class RangingSystemRelated {
         for (int tick = 0; tick < maxTicks; tick++) {
             path.add(pos);
 
-            Vec3d nextPos = pos.add(velocity);
+            Vec3 nextPos = pos.add(velocity);
 
             // 射线检测方块
-            var hit = world.raycast(new RaycastContext(
+            var hit = world.clip(new ClipContext(
                     pos, nextPos,
-                    RaycastContext.ShapeType.COLLIDER,
-                    RaycastContext.FluidHandling.SOURCE_ONLY,
-                    ShapeContext.absent()
+                    ClipContext.Block.COLLIDER,
+                    ClipContext.Fluid.SOURCE_ONLY,
+                    CollisionContext.empty()
             ));
 
             if (hit.getType() != HitResult.Type.MISS) {
-                path.add(hit.getPos());
+                path.add(hit.getLocation());
                 break;
             }
 
             pos = nextPos;
 
-            if (world.getFluidState(BlockPos.ofFloored(pos)).isIn(FluidTags.WATER)) {
-                velocity = velocity.multiply(dragWater);
+            if (world.getFluidState(BlockPos.containing(pos)).is(FluidTags.WATER)) {
+                velocity = velocity.scale(dragWater);
             } else {
-                velocity = velocity.multiply(dragAir);
+                velocity = velocity.scale(dragAir);
             }
 
             velocity = velocity.add(0, -gravity, 0);
 
-            if (velocity.lengthSquared() < 1e-6) break;
+            if (velocity.lengthSqr() < 1e-6) break;
         }
 
         return path;
     }
 
-    public static void renderArrowPredictedPath(MinecraftClient client,
-                                                ClientWorld world,
-                                                ArrowEntity arrow,
-                                                MatrixStack matrices,
+    public static void renderArrowPredictedPath(Minecraft client,
+                                                ClientLevel world,
+                                                Arrow arrow,
+                                                PoseStack matrices,
                                                 float tickDelta) {
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
-        var cameraPos = camera.getPos();
+        var cameraPos = camera.position();
 
-        if (arrow.getVelocity().lengthSquared() < 1e-6) return;
+        if (arrow.getDeltaMovement().lengthSqr() < 1e-6) return;
 
         // 按 tick 预测箭的路径，最多 50 tick（可调）
-        List<Vec3d> path = predictArrowPath(arrow.getEntityPos(), arrow.getVelocity(), world, 50);
+        List<Vec3> path = predictArrowPath(arrow.position(), arrow.getDeltaMovement(), world, 50);
 
         if (path.isEmpty()) return;
 
@@ -555,44 +560,44 @@ public class RangingSystemRelated {
         float beamWidth = .1f;
 
         // 遍历路径渲染每一段光束
-        matrices.push();
+        matrices.pushPose();
         for (int i = 0; i < path.size() - 1; i++) {
-            Vec3d start = path.get(i).subtract(cameraPos);
-            Vec3d end = path.get(i + 1).subtract(cameraPos);
+            Vec3 start = path.get(i).subtract(cameraPos);
+            Vec3 end = path.get(i + 1).subtract(cameraPos);
             RenderingUtils.renderBeam(matrices, start, end, color, beamWidth);
         }
-        matrices.pop();
+        matrices.popPose();
 
         // 可选：在终点渲染小球表示撞击点
-        Vec3d hitPos = path.getLast().subtract(cameraPos);
+        Vec3 hitPos = path.getLast().subtract(cameraPos);
         float radius = 0.5f; // 小球半径
-        matrices.push();
+        matrices.pushPose();
         matrices.translate(hitPos.x, hitPos.y, hitPos.z);
         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color, 8, 8);
-        matrices.pop();
+        matrices.popPose();
     }
 
-    public static void renderCreeperBoomRange(MinecraftClient client,
-                                              ClientWorld world,
-                                              CreeperEntity creeper,
-                                              MatrixStack matrices,
+    public static void renderCreeperBoomRange(Minecraft client,
+                                              ClientLevel world,
+                                              Creeper creeper,
+                                              PoseStack matrices,
                                               float tickDelta) {
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
-        var cameraPos = camera.getPos();
-        float radius = ((CreeperEntityAccessor)creeper).getExplosionRadius() * (creeper.isCharged() ? 2f : 1f);
+        var cameraPos = camera.position();
+        float radius = ((CreeperEntityAccessor)creeper).getExplosionRadius() * (creeper.isPowered() ? 2f : 1f);
 
         // 颜色渐变逻辑：正在蓄力则红色，否则灰色
-        float fuseProgress = creeper.getLerpedFuseTime(tickDelta); // 0~1
+        float fuseProgress = creeper.getSwelling(tickDelta); // 0~1
         float r = 0.5f + (1f - 0.5f) * fuseProgress; // 0.5 -> 1
         float g = 0.5f * (1f - fuseProgress);         // 0.5 -> 0
         float b = 0.5f * (1f - fuseProgress);         // 0.5 -> 0
         float a = 0.5f;                               // 半透明
         float[] color = new float[]{r, g, b, a};
 
-        Vec3d pos = creeper.getEntityPos();
+        Vec3 pos = creeper.position();
 
-        matrices.push();
+        matrices.pushPose();
         matrices.translate(
                 pos.x - cameraPos.x,
                 pos.y - cameraPos.y,
@@ -603,42 +608,42 @@ public class RangingSystemRelated {
         int lonDivisions = 16;
         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color, latDivisions, lonDivisions);
         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius*2, color, latDivisions, lonDivisions);
-        matrices.pop();
+        matrices.popPose();
     }
 
 
-    public static void renderSlimeJumping(MinecraftClient client,
-                                          ClientWorld world,
-                                          SlimeEntity slime,
-                                          MatrixStack matrices,
+    public static void renderSlimeJumping(Minecraft client,
+                                          ClientLevel world,
+                                          Slime slime,
+                                          PoseStack matrices,
                                           float tickDelta) {
 
-        float[] color = slime instanceof MagmaCubeEntity
+        float[] color = slime instanceof MagmaCube
                 ? new float[]{1.f, 0xa5 / 255.f, 0x50 / 255.f, 1f}
                 : new float[]{0f, 1f, 0f, 1f};
 
-        VertexConsumerProvider.Immediate provider = client.getBufferBuilders().getEntityVertexConsumers();
-        VertexConsumer consumer = provider.getBuffer(RenderLayer.getLines());
+        MultiBufferSource.BufferSource provider = client.renderBuffers().bufferSource();
+        VertexConsumer consumer = provider.getBuffer(RenderTypes.lines());
 
-        Vec3d startPos = slime.getEntityPos();
-        Vec3d velocity = slime.getVelocity();
+        Vec3 startPos = slime.position();
+        Vec3 velocity = slime.getDeltaMovement();
 
         double gravity = 0.08;
         double drag = 0.98;
         int maxTicks = 40; // 2秒预测
 
-        Vec3d pos = startPos;
-        Vec3d vel = velocity;
+        Vec3 pos = startPos;
+        Vec3 vel = velocity;
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
-        var cameraPos = camera.getPos();
+        var cameraPos = camera.position();
 
-        List<Vec3d> trajectory = new ArrayList<>();
+        List<Vec3> trajectory = new ArrayList<>();
         trajectory.add(pos);
 
         for (int i = 0; i < maxTicks; i++) {
             // 预测下一位置
-            Vec3d nextPos = pos.add(vel);
+            Vec3 nextPos = pos.add(vel);
 
             // 检查方块碰撞（近似，只检测垂直）
             BlockPos blockBelow = new BlockPos(
@@ -646,9 +651,9 @@ public class RangingSystemRelated {
                     (int)Math.floor(nextPos.y - 0.01),
                     (int)Math.floor(nextPos.z)
             );
-            if (!world.isAir(blockBelow)) {
+            if (!world.isEmptyBlock(blockBelow)) {
                 // 落地，停止预测
-                nextPos = new Vec3d(nextPos.x, Math.ceil(nextPos.y), nextPos.z);
+                nextPos = new Vec3(nextPos.x, Math.ceil(nextPos.y), nextPos.z);
                 trajectory.add(nextPos);
                 break;
             }
@@ -656,7 +661,7 @@ public class RangingSystemRelated {
             trajectory.add(nextPos);
 
             // 更新速度
-            vel = new Vec3d(vel.x * drag, vel.y - gravity, vel.z * drag);
+            vel = new Vec3(vel.x * drag, vel.y - gravity, vel.z * drag);
 
             pos = nextPos;
         }
@@ -664,34 +669,34 @@ public class RangingSystemRelated {
         if (trajectory.size() < 2){return;}
         // 渲染轨迹
         for (int i = 0; i < trajectory.size() - 1; i++) {
-            Vec3d from = trajectory.get(i).subtract(cameraPos);
-            Vec3d to = trajectory.get(i + 1).subtract(cameraPos);
-            putLine(consumer, matrices.peek().getPositionMatrix(), 0, 0, 0,
+            Vec3 from = trajectory.get(i).subtract(cameraPos);
+            Vec3 to = trajectory.get(i + 1).subtract(cameraPos);
+            putLine(consumer, matrices.last().pose(), 0, 0, 0,
                     new Vector3f((float) from.x, (float) from.y, (float) from.z),
                     new Vector3f((float) to.x, (float) to.y, (float) to.z),
                     color);
         }
 
         // 落点Box
-        Vec3d landingPos = trajectory.getLast();
-        Box landingBox = slime.getBoundingBox().offset(landingPos.subtract(slime.getEntityPos()));
+        Vec3 landingPos = trajectory.getLast();
+        AABB landingBox = slime.getBoundingBox().move(landingPos.subtract(slime.position()));
         renderBoxLines(landingBox, matrices, consumer, color, cameraPos);
 
-        provider.drawCurrentLayer();
+        provider.endLastBatch();
     }
 
-    public static void renderDragonFireballHitRange(MinecraftClient client,
-                                                    ClientWorld world,DragonFireballEntity fireball,
-                                                    MatrixStack matrices,
+    public static void renderDragonFireballHitRange(Minecraft client,
+                                                    ClientLevel world,DragonFireball fireball,
+                                                    PoseStack matrices,
                                                     float tickDelta) {
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
-        var cameraPos = camera.getPos();
-        Vec3d hitPos = predictDragonFireballHitPos(fireball.getEntityPos(), fireball.getVelocity(), world);
+        var cameraPos = camera.position();
+        Vec3 hitPos = predictDragonFireballHitPos(fireball.position(), fireball.getDeltaMovement(), world);
         float radius = 3.0f; // 范围半径
 
         // 开始渲染球
-        matrices.push();
+        matrices.pushPose();
 
         // 平移到落点
         matrices.translate(hitPos.x - cameraPos.x,
@@ -704,26 +709,26 @@ public class RangingSystemRelated {
         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color,
                 latDivisions, lonDivisions);
 
-        matrices.pop();
+        matrices.popPose();
 
         RenderingUtils.renderBeam(matrices,
-                fireball.getEntityPos().subtract(cameraPos),
+                fireball.position().subtract(cameraPos),
                 hitPos.subtract(cameraPos),
                 color,
                 beamWidth);
     }
 
-    public static void renderWitherFiringSkullHitRange(MinecraftClient client,
-                                                       ClientWorld world,
-                                                       WitherSkullEntity skull,
-                                                       MatrixStack matrices,
+    public static void renderWitherFiringSkullHitRange(Minecraft client,
+                                                       ClientLevel world,
+                                                       WitherSkull skull,
+                                                       PoseStack matrices,
                                                        float tickDelta,
-                                                       Vec3d cameraPos) {
-        Vec3d startPos = skull.getEntityPos().subtract(cameraPos);
-        Vec3d velocity = skull.getVelocity();
+                                                       Vec3 cameraPos) {
+        Vec3 startPos = skull.position().subtract(cameraPos);
+        Vec3 velocity = skull.getDeltaMovement();
 
-        boolean charged = skull.isCharged();
-        Vec3d hitPos = predictWitherSkullHitPos(skull.getEntityPos(), velocity, world, charged)
+        boolean charged = skull.isDangerous();
+        Vec3 hitPos = predictWitherSkullHitPos(skull.position(), velocity, world, charged)
                 .subtract(cameraPos);
 
         float radius = 2.0f;   // WitherSkull 爆炸范围
@@ -734,7 +739,7 @@ public class RangingSystemRelated {
                 new float[]{0.8f, 0.3f, 0.3f, 0.45f};
 
         // 绘制落点球体
-        matrices.push();
+        matrices.pushPose();
         matrices.translate(hitPos.x, hitPos.y, hitPos.z);
         RenderingUtils.renderTransparentSphere(
                 matrices,
@@ -750,7 +755,7 @@ public class RangingSystemRelated {
                 color,
                 16, 16
         );
-        matrices.pop();
+        matrices.popPose();
 
         // 光束：从 Skulll 当前到落点位置
         RenderingUtils.renderBeam(
@@ -763,25 +768,25 @@ public class RangingSystemRelated {
     }
 
 
-    public static Vec3d predictWitherSkullHitPos(Vec3d startPos, Vec3d velocity, ClientWorld world, boolean charged) {
-        Vec3d pos = startPos;
-        Vec3d vel = velocity;
+    public static Vec3 predictWitherSkullHitPos(Vec3 startPos, Vec3 velocity, ClientLevel world, boolean charged) {
+        Vec3 pos = startPos;
+        Vec3 vel = velocity;
         float drag = charged ? 0.73f : 0.99f;   // WitherSkull 的阻力设定
 
         for (int i = 0; i < 200; i++) {
-            Vec3d nextPos = pos.add(vel);
+            Vec3 nextPos = pos.add(vel);
 
             // 方块碰撞
-            BlockHitResult blockHit = world.raycast(new RaycastContext(
+            BlockHitResult blockHit = world.clip(new ClipContext(
                     pos, nextPos,
-                    RaycastContext.ShapeType.OUTLINE,
-                    RaycastContext.FluidHandling.ANY,
-                    ShapeContext.absent()
+                    ClipContext.Block.OUTLINE,
+                    ClipContext.Fluid.ANY,
+                    CollisionContext.empty()
             ));
 
             if (blockHit.getType() != HitResult.Type.MISS) {
                 BlockPos bp = blockHit.getBlockPos();
-                return new Vec3d(
+                return new Vec3(
                         bp.getX() + 0.5,
                         bp.getY() + 0.5,
                         bp.getZ() + 0.5
@@ -789,10 +794,10 @@ public class RangingSystemRelated {
             }
 
             // 实体检测（可选，凋灵弹接触生物就爆）
-            for (Entity e : world.getEntities()) {
+            for (Entity e : world.entitiesForRendering()) {
                 if (!(e instanceof LivingEntity)) continue;
 
-                Optional<Vec3d> hit = e.getBoundingBox().raycast(pos, nextPos);
+                Optional<Vec3> hit = e.getBoundingBox().clip(pos, nextPos);
                 if (hit.isPresent()) {
                     return hit.get();
                 }
@@ -800,33 +805,33 @@ public class RangingSystemRelated {
 
             // 更新
             pos = nextPos;
-            vel = vel.multiply(drag);
+            vel = vel.scale(drag);
         }
 
         // 没撞到，认为飞到这里结束
         return pos;
     }
 
-    public static void renderCrossbowRocketBoomRange(MinecraftClient client, MatrixStack matrices, float tickDelta) {
+    public static void renderCrossbowRocketBoomRange(Minecraft client, PoseStack matrices, float tickDelta) {
         var player = client.player;
-        var world = client.world;
+        var world = client.level;
         if (player == null || world == null) return;
 
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
-        var cameraPos = camera.getPos();
+        var cameraPos = camera.position();
 
-        List<ItemStack> crossbows = Arrays.asList(player.getMainHandStack(), player.getOffHandStack());
+        List<ItemStack> crossbows = Arrays.asList(player.getMainHandItem(), player.getOffhandItem());
 
         for (ItemStack stack : crossbows) {
             if (!(stack.getItem() instanceof CrossbowItem) || !CrossbowItem.isCharged(stack)) continue;
 
-            ChargedProjectilesComponent projectiles = stack.getOrDefault(DataComponentTypes.CHARGED_PROJECTILES, ChargedProjectilesComponent.DEFAULT);
+            ChargedProjectiles projectiles = stack.getOrDefault(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.EMPTY);
 
             // 多重射击检测
             AtomicBoolean multishot = new AtomicBoolean(false);
-            stack.getEnchantments().getEnchantments().forEach(enchantmentRegistryEntry -> {
-                enchantmentRegistryEntry.getKey().ifPresent(key -> {
+            stack.getEnchantments().keySet().forEach(enchantmentRegistryEntry -> {
+                enchantmentRegistryEntry.unwrapKey().ifPresent(key -> {
                     if (key == Enchantments.MULTISHOT){
                         multishot.set(true);
                     }
@@ -836,31 +841,31 @@ public class RangingSystemRelated {
             // 多重射击角度偏移
             float[] angles = multishot.get() ? new float[]{0f, 10f, -10f} : new float[]{0f};
 
-            for (ItemStack proj : projectiles.getProjectiles()) {
-                if (!proj.isOf(Items.FIREWORK_ROCKET)) continue;
+            for (ItemStack proj : projectiles.getItems()) {
+                if (!proj.is(Items.FIREWORK_ROCKET)) continue;
 
-                var fireworkComp = proj.getComponents().get(DataComponentTypes.FIREWORKS);
+                var fireworkComp = proj.getComponents().get(DataComponents.FIREWORKS);
                 if (fireworkComp == null) continue;
 
                 int flight = fireworkComp.flightDuration();
-                List<FireworkExplosionComponent> explosions = fireworkComp.explosions();
+                List<FireworkExplosion> explosions = fireworkComp.explosions();
 
-                Vec3d startPos = player.getEyePos();
+                Vec3 startPos = player.getEyePosition();
 
-                float yaw = player.getYaw(tickDelta);
-                float pitch = player.getPitch(tickDelta);
+                float yaw = player.getViewYRot(tickDelta);
+                float pitch = player.getViewXRot(tickDelta);
                 double yawRad = Math.toRadians(-yaw);
                 double pitchRad = Math.toRadians(-pitch);
 
 // 玩家视线方向向量
-                Vec3d look = new Vec3d(
+                Vec3 look = new Vec3(
                         Math.sin(yawRad) * Math.cos(pitchRad),
                         Math.sin(pitchRad),
                         Math.cos(yawRad) * Math.cos(pitchRad)
                 ).normalize();
 
 // 本地右向量 (水平)
-                Vec3d right = new Vec3d(
+                Vec3 right = new Vec3(
                         Math.cos(yawRad),
                         0,
                         -Math.sin(yawRad)
@@ -872,25 +877,25 @@ public class RangingSystemRelated {
                     double angleRad = Math.toRadians(angleDeg);
 
                     // 绕 upLocal 旋转 look
-                    Vec3d rotated = look.multiply(Math.cos(angleRad))
-                            .add(right.multiply(Math.sin(angleRad)))
+                    Vec3 rotated = look.scale(Math.cos(angleRad))
+                            .add(right.scale(Math.sin(angleRad)))
                             .normalize();
 
-                    Vec3d velocity = rotated.multiply(1.6f);
+                    Vec3 velocity = rotated.scale(1.6f);
 
                     // 飞行距离按 flight 时间乘速度
-                    Vec3d endPos = startPos.add(velocity.multiply(flight * 10.0));
+                    Vec3 endPos = startPos.add(velocity.scale(flight * 10.0));
 
                     // 射线检测碰撞方块
-                    RaycastContext ctx = new RaycastContext(startPos, endPos,
-                            RaycastContext.ShapeType.COLLIDER,
-                            RaycastContext.FluidHandling.NONE,
+                    ClipContext ctx = new ClipContext(startPos, endPos,
+                            ClipContext.Block.COLLIDER,
+                            ClipContext.Fluid.NONE,
                             player);
-                    BlockHitResult result = world.raycast(ctx);
-                    Vec3d hitPos = result.getType() != HitResult.Type.MISS ? result.getPos() : endPos;
+                    BlockHitResult result = world.clip(ctx);
+                    Vec3 hitPos = result.getType() != HitResult.Type.MISS ? result.getLocation() : endPos;
 
                     // 渲染每个爆炸效果
-                    for (FireworkExplosionComponent explosion : explosions) {
+                    for (FireworkExplosion explosion : explosions) {
                         float radius = switch (explosion.shape()) {
                             case SMALL_BALL -> 2.0f;
                             case LARGE_BALL -> 3.0f;
@@ -914,11 +919,11 @@ public class RangingSystemRelated {
                             color[2] = (color[2] + (c & 0xFF) / 255f) / 2f;
                         }
 
-                        matrices.push();
-                        Vec3d renderBeamStart = startPos.subtract(cameraPos);
-                        Vec3d renderBeamEnd = hitPos.subtract(cameraPos);
-                        Vec3d renderBeamVector = renderBeamEnd.subtract(renderBeamStart);
-                        Vec3d renderBeamCut = renderBeamVector.multiply(0.2);
+                        matrices.pushPose();
+                        Vec3 renderBeamStart = startPos.subtract(cameraPos);
+                        Vec3 renderBeamEnd = hitPos.subtract(cameraPos);
+                        Vec3 renderBeamVector = renderBeamEnd.subtract(renderBeamStart);
+                        Vec3 renderBeamCut = renderBeamVector.scale(0.2);
 
                         renderBeamStart = renderBeamStart.add(renderBeamCut);
                         RenderingUtils.renderBeam(
@@ -928,15 +933,15 @@ public class RangingSystemRelated {
                                 color,
                                 beamWidth
                         );
-                        matrices.pop();
+                        matrices.popPose();
 
                         // 渲染爆炸球
-                        matrices.push();
+                        matrices.pushPose();
                         matrices.translate(hitPos.x - cameraPos.x,
                                 hitPos.y - cameraPos.y,
                                 hitPos.z - cameraPos.z);
                         RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color, 32, 32);
-                        matrices.pop();
+                        matrices.popPose();
                     }
                 }
             }
@@ -945,56 +950,56 @@ public class RangingSystemRelated {
 
 
     // 简单旋转Y轴
-    private static Vec3d rotateVectorYaw(Vec3d vec, float deg) {
+    private static Vec3 rotateVectorYaw(Vec3 vec, float deg) {
         double rad = Math.toRadians(deg);
         double cos = Math.cos(rad);
         double sin = Math.sin(rad);
         double x = vec.x * cos - vec.z * sin;
         double z = vec.x * sin + vec.z * cos;
-        return new Vec3d(x, vec.y, z);
+        return new Vec3(x, vec.y, z);
     }
 
 
-    public static Vec3d predictDragonFireballHitPos(Vec3d startPos, Vec3d velocity, World world) {
-        Vec3d endPos = startPos.add(velocity.multiply(200)); // 远距离延长射线
-        RaycastContext context = new RaycastContext(
+    public static Vec3 predictDragonFireballHitPos(Vec3 startPos, Vec3 velocity, Level world) {
+        Vec3 endPos = startPos.add(velocity.scale(200)); // 远距离延长射线
+        ClipContext context = new ClipContext(
                 startPos,
                 endPos,
-                RaycastContext.ShapeType.COLLIDER,
-                RaycastContext.FluidHandling.NONE,
-                ShapeContext.absent()
+                ClipContext.Block.COLLIDER,
+                ClipContext.Fluid.NONE,
+                CollisionContext.empty()
         );
 
-        BlockHitResult result = world.raycast(context);
+        BlockHitResult result = world.clip(context);
         if (result.getType() != HitResult.Type.MISS) {
-            return result.getPos();
+            return result.getLocation();
         }
         else {
             return endPos; // 如果射线没有撞到方块，就延长到最大范围
         }
     }
 
-    public static Vec3d predictFireballHitPos(Vec3d startPos, Vec3d velocity, ClientWorld world) {
-        Vec3d pos = startPos;
-        Vec3d vel = velocity;
+    public static Vec3 predictFireballHitPos(Vec3 startPos, Vec3 velocity, ClientLevel world) {
+        Vec3 pos = startPos;
+        Vec3 vel = velocity;
 
         double maxDistance = 100.0; // 最远预测距离
         double step = 0.1; // 每次移动步长
         double traveled = 0;
 
         while (traveled < maxDistance) {
-            Vec3d nextPos = pos.add(vel.multiply(step));
+            Vec3 nextPos = pos.add(vel.scale(step));
 
             // 射线检测方块
-            var hit = world.raycast(new RaycastContext(
+            var hit = world.clip(new ClipContext(
                     pos, nextPos,
-                    RaycastContext.ShapeType.COLLIDER,
-                    RaycastContext.FluidHandling.NONE,
-                    ShapeContext.absent()
+                    ClipContext.Block.COLLIDER,
+                    ClipContext.Fluid.NONE,
+                    CollisionContext.empty()
             ));
 
             if (hit.getType() != HitResult.Type.MISS) {
-                return hit.getPos();
+                return hit.getLocation();
             }
 
             pos = nextPos;

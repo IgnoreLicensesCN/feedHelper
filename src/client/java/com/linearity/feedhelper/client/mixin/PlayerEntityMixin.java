@@ -1,16 +1,9 @@
 package com.linearity.feedhelper.client.mixin;
 
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.player.Player;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import static com.linearity.feedhelper.config.FeatureToggle.AVOID_ELYTRA_RESISTANCE;
-
-@Mixin(PlayerEntity.class)
+@Mixin(Player.class)
 public class PlayerEntityMixin {
 //    @Inject(
 //            method = "getVelocityMultiplier", // 每 tick 调用

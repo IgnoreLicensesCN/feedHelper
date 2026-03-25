@@ -21,36 +21,45 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
-import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.block.*;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientCommonNetworkHandler;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.network.ClientPlayerInteractionManager;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.mob.*;
-import net.minecraft.entity.passive.AnimalEntity;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.entity.passive.SheepEntity;
-import net.minecraft.entity.player.PlayerEntity;
-
-import net.minecraft.item.*;
-import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.registry.tag.FluidTags;
-import net.minecraft.registry.tag.ItemTags;
-import net.minecraft.text.Text;
-import net.minecraft.util.Hand;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.Pair;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.LightType;
-import net.minecraft.world.World;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
+import net.minecraft.client.multiplayer.MultiPlayerGameMode;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.resources.Identifier;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.util.Tuple;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.attribute.EnvironmentAttributes;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.sheep.Sheep;
+import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CropBlock;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.NetherWartBlock;
+import net.minecraft.world.level.block.SimpleWaterloggedBlock;
+import net.minecraft.world.level.block.SweetBerryBushBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -85,9 +94,9 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
 
 
         WorldRenderEvents.BEFORE_TRANSLUCENT.register((context) -> {
-            MinecraftClient client = MinecraftClient.getInstance();
-            MatrixStack matrices = context.matrices();
-            float delta = client.getRenderTickCounter().getDynamicDeltaTicks();
+            var client = Minecraft.getInstance();
+            var matrices = context.matrices();
+            float delta = client.getDeltaTracker().getGameTimeDeltaTicks();
 
             if (FeatureToggle.RANGING_SYSTEM.getBooleanValue()){
                 rangingSystemLoopRendering(client, matrices, delta);
@@ -95,10 +104,10 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         });
         HudElementRegistry.attachElementBefore(
                 VanillaHudElements.INFO_BAR,
-                Identifier.of("feedhelper", "debug_rect"),
+                Identifier.fromNamespaceAndPath("feedhelper", "debug_rect"),
                 (drawContext, renderTickCounter) -> {
-                    MinecraftClient client = MinecraftClient.getInstance();
-                    float delta = client.getRenderTickCounter().getDynamicDeltaTicks();
+                    var client = Minecraft.getInstance();
+                    float delta = client.getDeltaTracker().getGameTimeDeltaTicks();
 
                     if (FeatureToggle.RANGING_SYSTEM.getBooleanValue()){
                         rangingSystemLoopRenderingOnHUD(client, drawContext, delta);
@@ -107,23 +116,23 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         );
     }
 
-    public static void fillLavaLoop(MinecraftClient client) {
+    public static void fillLavaLoop(Minecraft client) {
         var player = client.player;
-        var world = client.world;
-        var interactionManager = client.interactionManager;
+        var world = client.level;
+        var interactionManager = client.gameMode;
         if (player == null || world == null || interactionManager == null) return;
-        Hand hand = Hand.OFF_HAND;
-        ItemStack handStack = player.getOffHandStack();
+        InteractionHand hand = InteractionHand.OFF_HAND;
+        ItemStack handStack = player.getOffhandItem();
         if (handStack == null || handStack.isEmpty()) {
-            hand = Hand.MAIN_HAND;
+            hand = InteractionHand.MAIN_HAND;
         }
-        handStack = player.getMainHandStack();
+        handStack = player.getMainHandItem();
         if (handStack == null || handStack.isEmpty()) {
             return;
         }
         Set<BlockPos> placedPos = new HashSet<>();
         if (handStack.getItem() instanceof BlockItem blockItem) {
-            double reach = player.getAttributeValue(EntityAttributes.BLOCK_INTERACTION_RANGE) - 1.2;
+            double reach = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) - 1.2;
             int radius = (int) Math.ceil(reach);
             List<BlockPos> blockPosList = new ArrayList<>(radius*radius*radius*8);
             for (int y = -radius; y <= radius; y++) {
@@ -146,32 +155,32 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                 {
                     BlockPos center = new BlockPos(player.getBlockX() + x,player.getBlockY() + y,player.getBlockZ() + z);
                     BlockState centerState = world.getBlockState(center);
-                    if (centerState.getFluidState().isIn(FluidTags.LAVA)){continue;}
+                    if (centerState.getFluidState().is(FluidTags.LAVA)){continue;}
                     BlockHitResult hitResult;
-                    Pair<BlockPos,Direction>[] pairs = new Pair[]{
-                            new Pair(center.up(),Direction.UP),
-                            new Pair(center.down(),Direction.DOWN),
-                            new Pair(center.north(),Direction.NORTH),
-                            new Pair(center.south(),Direction.SOUTH),
-                            new Pair(center.west(),Direction.WEST),
-                            new Pair(center.east(),Direction.EAST),
+                    Tuple<BlockPos,Direction>[] pairs = new Tuple[]{
+                            new Tuple(center.above(),Direction.UP),
+                            new Tuple(center.below(),Direction.DOWN),
+                            new Tuple(center.north(),Direction.NORTH),
+                            new Tuple(center.south(),Direction.SOUTH),
+                            new Tuple(center.west(),Direction.WEST),
+                            new Tuple(center.east(),Direction.EAST),
                     };
-                    for (Pair<BlockPos,Direction> pair : pairs) {
-                        if (placedPos.contains(pair.getLeft())) {
+                    for (Tuple<BlockPos,Direction> pair : pairs) {
+                        if (placedPos.contains(pair.getA())) {
                             continue;
                         }
-                        if (!center.isWithinDistance(player.getEntityPos(),radius)){
+                        if (!center.closerToCenterThan(player.position(),radius)){
                             continue;
                         }
-                        if (world.getBlockState(pair.getLeft()).getFluidState().isIn(FluidTags.LAVA)) {
+                        if (world.getBlockState(pair.getA()).getFluidState().is(FluidTags.LAVA)) {
                             hitResult = new BlockHitResult(
-                                    pair.getLeft().toCenterPos(),
-                                    pair.getRight(),
+                                    pair.getA().getCenter(),
+                                    pair.getB(),
                                     center,
                                     false
                             );
-                            interactionManager.interactBlock(player,hand,hitResult);
-                            placedPos.add(pair.getLeft());
+                            interactionManager.useItemOn(player,hand,hitResult);
+                            placedPos.add(pair.getA());
                         }
                     }
                 }
@@ -179,50 +188,50 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         }
     }
 
-    public static void autoTorchLoop(MinecraftClient client) {
+    public static void autoTorchLoop(Minecraft client) {
         var player = client.player;
-        var world = client.world;
-        var interactionManager = client.interactionManager;
+        var world = client.level;
+        var interactionManager = client.gameMode;
         if (player == null || world == null || interactionManager == null) return;
 
-        Hand hand = Hand.MAIN_HAND;
-        ItemStack handStack = player.getMainHandStack();
-        if (handStack == null || handStack.isEmpty() || !handStack.isOf(Items.TORCH)) {
-            handStack = player.getOffHandStack();
-            if (handStack == null || handStack.isEmpty() || !handStack.isOf(Items.TORCH)) {
+        InteractionHand hand = InteractionHand.MAIN_HAND;
+        ItemStack handStack = player.getMainHandItem();
+        if (handStack == null || handStack.isEmpty() || !handStack.is(Items.TORCH)) {
+            handStack = player.getOffhandItem();
+            if (handStack == null || handStack.isEmpty() || !handStack.is(Items.TORCH)) {
                 return; // 双手都没有火把
             }
-            hand = Hand.OFF_HAND;
+            hand = InteractionHand.OFF_HAND;
         }
 
-        double reach = player.getAttributeValue(EntityAttributes.BLOCK_INTERACTION_RANGE) - 1.2;
+        double reach = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) - 1.2;
         int radius = (int) Math.ceil(reach);
 
         // 扫描范围
         for (int y = -radius; y <= radius; y++) {
             for (int x = -radius; x <= radius; x++) {
                 for (int z = -radius; z <= radius; z++) {
-                    BlockPos center = player.getBlockPos().add(x, y, z);
-                    if (!center.isWithinDistance(player.getEntityPos(), reach)) continue;
+                    BlockPos center = player.blockPosition().offset(x, y, z);
+                    if (!center.closerToCenterThan(player.position(), reach)) continue;
 
                     BlockState centerState = world.getBlockState(center);
-                    if (centerState.getFluidState().isIn(FluidTags.LAVA) || centerState.getFluidState().isIn(FluidTags.WATER)) continue;
+                    if (centerState.getFluidState().is(FluidTags.LAVA) || centerState.getFluidState().is(FluidTags.WATER)) continue;
 
                     // 周围六个方向尝试放火把
                     for (Direction dir : new Direction[]{Direction.UP, Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST}) {
-                        BlockPos targetPos = center.offset(dir);
+                        BlockPos targetPos = center.relative(dir);
                         BlockState targetState = world.getBlockState(targetPos);
 
                         if (!targetState.isAir()) continue; // 目标必须是空气
-                        int light = world.getLightLevel(LightType.BLOCK, targetPos);
+                        int light = world.getBrightness(LightLayer.BLOCK, targetPos);
 
 // 如果当前格亮度为 0，检查周围是否已经是亮的
                         if (light == 0) {
                             boolean neighborBright = false;
 
                             for (Direction checkDir : Direction.values()) {
-                                BlockPos np = targetPos.offset(checkDir);
-                                int nl = world.getLightLevel(LightType.BLOCK, np);
+                                BlockPos np = targetPos.relative(checkDir);
+                                int nl = world.getBrightness(LightLayer.BLOCK, np);
 
                                 if (nl >= 8) { // 邻格已有亮光 → 说明光照还没更新
                                     neighborBright = true;
@@ -241,7 +250,7 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                         // 判断火把是否能放
                         if (((AbstractBlockAccessor)Blocks.TORCH).invokeCanPlaceAt(targetState, world, targetPos)) {
                             BlockHitResult hitResult = new BlockHitResult(
-                                    targetPos.toCenterPos(),
+                                    targetPos.getCenter(),
                                     dir,
                                     center,
                                     false
@@ -251,9 +260,9 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                                 noMoreTorchOnHand = true;
                             }
 
-                            interactionManager.interactBlock(player, hand, hitResult);
+                            interactionManager.useItemOn(player, hand, hitResult);
                             if (noMoreTorchOnHand) {
-                                equipToHandIf((stack -> Objects.equals(stack.getItem(),Items.TORCH)),client,Hand.OFF_HAND);
+                                equipToHandIf((stack -> Objects.equals(stack.getItem(),Items.TORCH)),client,InteractionHand.OFF_HAND);
                             }
 
                             return; // 放置成功就结束本刻循环
@@ -264,51 +273,72 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         }
     }
 
-
-    public static void tryFeedNearbyAnimals(MinecraftClient client) {
+    public static void tryFeedNearbyAnimals(Minecraft client) {
         var player = client.player;
-        var world = client.world;
-        var interactionManager = client.interactionManager;
+        var world = client.level;
+        var interactionManager = client.gameMode;
         if (player == null || world == null || interactionManager == null) return;
 
 
 // player interaction reach (client-side approximation)
-        double reach = player.getAttributeValue(EntityAttributes.ENTITY_INTERACTION_RANGE);
+        double reach = player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
 
 // Box around player
-        Box box = player.getBoundingBox().expand(reach);
-        var animals = world.getEntitiesByClass(AnimalEntity.class, box, a -> true);
+        AABB box = player.getBoundingBox().inflate(reach);
+        var animals = world.getEntitiesOfClass(Animal.class, box, a -> true);
 
 
-        ItemStack held = player.getMainHandStack();
+        ItemStack held = player.getMainHandItem();
         if (held.isEmpty()) return;
 
 
-        for (AnimalEntity animal : animals) {
-            if (!animal.isBreedingItem(held)) continue;
+        for (Animal animal : animals) {
+            if (!animal.isFood(held)) continue;
             if (animal.isBaby() || animal.isInLove()) continue;
 
 
 // simulate interact
-            interactionManager.interactEntity(player, animal, Hand.MAIN_HAND);
+            interactionManager.interact(player, animal, InteractionHand.MAIN_HAND);
 //            return; //feed a lot
         }
     }
 
-    public static void tryFarm(MinecraftClient client) {
+    public static void tryAttackHealthLowestGrownAnimal(Minecraft client) {
         var player = client.player;
-        var world = client.world;
-        var interactionManager = client.interactionManager;
+        var world = client.level;
+        var interactionManager = client.gameMode;
         if (player == null || world == null || interactionManager == null) return;
 
-        double reach = player.getAttributeValue(EntityAttributes.BLOCK_INTERACTION_RANGE) - 1;
 
-        BlockPos playerPos = player.getBlockPos();
+// player interaction reach (client-side approximation)
+        double reach = player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
+
+// Box around player
+        AABB box = player.getBoundingBox().inflate(reach);
+        var animals = world.getEntitiesOfClass(Animal.class, box, animal -> !((animal.isBaby())));
+
+
+        if (animals.isEmpty()) return;
+        animals.sort((animal1,animal2)-> Float.compare(animal1.getHealth(), animal2.getHealth()));
+
+        var animal = animals.getFirst();
+        interactionManager.attack(player, animal);
+    }
+
+    public static void tryFarm(Minecraft client) {
+        var player = client.player;
+        var world = client.level;
+        var interactionManager = client.gameMode;
+        if (player == null || world == null || interactionManager == null) return;
+
+        double reach = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) - 1;
+
+        BlockPos playerPos = player.blockPosition();
 
         int radius = (int) Math.ceil(reach);
 
         // 枚举附近方块
-        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
             for (int y = -radius; y <= radius; y++) {
                 for (int x = -radius; x <= radius; x++) {
@@ -323,14 +353,14 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                             for (Map.Entry<BlockPos, Item> entry : placesToPlantWithItems.entrySet()) {
                                 if (equipSeedToOffhand(player, entry.getValue(),client)) {
                                     BlockHitResult hit = new BlockHitResult(
-                                            entry.getKey().up().toCenterPos(),
+                                            entry.getKey().above().getCenter(),
                                             Direction.UP,
                                             entry.getKey(),
                                             false
                                     );
-                                    interactionManager.interactBlock(
+                                    interactionManager.useItemOn(
                                             player,
-                                            Hand.OFF_HAND,
+                                            InteractionHand.OFF_HAND,
                                             hit
                                     );
                                     entriesToRemove.add(entry.getKey());
@@ -344,73 +374,73 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                         if ((block instanceof CropBlock crop)) {
 
                             // 未成熟直接跳过
-                            if (!crop.isMature(state)) continue;
-                            BlockPos cropPos = mutable.toImmutable();
+                            if (!crop.isMaxAge(state)) continue;
+                            BlockPos cropPos = mutable.immutable();
 
                             // ───── 自动收割（破坏 mature 作物） ─────
-                            interactionManager.attackBlock(mutable, player.getHorizontalFacing());
+                            interactionManager.startDestroyBlock(mutable, player.getDirection());
 
                             // ───── 自动补种（使用种子） ─────
                             // 储存副手物品
-                            ItemStack originalOffhand = player.getOffHandStack().copy();
+                            ItemStack originalOffhand = player.getOffhandItem().copy();
 
 // equip seed → 放到副手
                             BlockHitResult hit = new BlockHitResult(
-                                    Vec3d.ofCenter(cropPos),
+                                    Vec3.atCenterOf(cropPos),
                                     Direction.UP,
-                                    cropPos.down(),
+                                    cropPos.below(),
                                     false
                             );
                             if (equipSeedToOffhand(player, seedFromBlock(state.getBlock()),client)) {
-                                interactionManager.interactBlock(
+                                interactionManager.useItemOn(
                                         player,
-                                        Hand.OFF_HAND,
+                                        InteractionHand.OFF_HAND,
                                         hit
                                 );
                             }else {
-                                placesToPlantWithItems.put(cropPos.down(),seedFromBlock(state.getBlock()));
+                                placesToPlantWithItems.put(cropPos.below(),seedFromBlock(state.getBlock()));
                             }
 
 // restore → 补回去
 //                        restoreOffhand(player, originalOffhand);
                         }
                         else if (block instanceof NetherWartBlock netherWart) {
-                            if (state.get(NetherWartBlock.AGE) != NetherWartBlock.MAX_AGE){
+                            if (state.getValue(NetherWartBlock.AGE) != NetherWartBlock.MAX_AGE){
                                 continue;
                             }
-                            BlockPos cropPos = mutable.toImmutable();
+                            BlockPos cropPos = mutable.immutable();
 
                             // ───── 自动收割（破坏 mature 作物） ─────
-                            interactionManager.attackBlock(mutable, player.getHorizontalFacing());
+                            interactionManager.startDestroyBlock(mutable, player.getDirection());
 
                             // ───── 自动补种（使用种子） ─────
                             // 储存副手物品
-                            ItemStack originalOffhand = player.getOffHandStack().copy();
+                            ItemStack originalOffhand = player.getOffhandItem().copy();
 
 // equip seed → 放到副手
                             BlockHitResult hit = new BlockHitResult(
-                                    Vec3d.ofCenter(cropPos),
+                                    Vec3.atCenterOf(cropPos),
                                     Direction.UP,
-                                    cropPos.down(),
+                                    cropPos.below(),
                                     false
                             );
                             if (equipSeedToOffhand(player, seedFromBlock(state.getBlock()),client)) {
-                                interactionManager.interactBlock(
+                                interactionManager.useItemOn(
                                         player,
-                                        Hand.OFF_HAND,
+                                        InteractionHand.OFF_HAND,
                                         hit
                                 );
                             }
                             else {
-                                placesToPlantWithItems.put(cropPos.down(),seedFromBlock(state.getBlock()));
+                                placesToPlantWithItems.put(cropPos.below(),seedFromBlock(state.getBlock()));
                             }
 
 // restore → 补回去
 //                        restoreOffhand(player, originalOffhand);
                         }
                         else if (block == Blocks.SUGAR_CANE) {
-                            BlockPos below = mutable.down();
-                            BlockPos twoBelow = below.down();
+                            BlockPos below = mutable.below();
+                            BlockPos twoBelow = below.below();
 
                             BlockState belowState = world.getBlockState(below);
                             BlockState twoBelowState = world.getBlockState(twoBelow);
@@ -418,43 +448,43 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                             // 当前甘蔗上方没有甘蔗，且下方是甘蔗，破坏当前甘蔗
                             // 或者：当前方块是甘蔗，下面是甘蔗，下面的下面不是甘蔗
                             if (belowState.getBlock() == Blocks.SUGAR_CANE && twoBelowState.getBlock() != Blocks.SUGAR_CANE) {
-                                interactionManager.attackBlock(mutable, player.getHorizontalFacing());
+                                interactionManager.startDestroyBlock(mutable, player.getDirection());
                             }
                         }
                         else if (block instanceof SweetBerryBushBlock sweetBerryBush) {
                             // 成熟判断
-                            int age = state.get(SweetBerryBushBlock.AGE);
+                            int age = state.getValue(SweetBerryBushBlock.AGE);
                             if (age >= SweetBerryBushBlock.MAX_AGE) {
                                 // 成熟了，可以右键收获
                                 BlockHitResult hit = new BlockHitResult(
-                                        Vec3d.ofCenter(mutable),
+                                        Vec3.atCenterOf(mutable),
                                         Direction.UP,
-                                        mutable.toImmutable(),
+                                        mutable.immutable(),
                                         false
                                 );
-                                interactionManager.interactBlock(player, Hand.MAIN_HAND, hit);
+                                interactionManager.useItemOn(player, InteractionHand.MAIN_HAND, hit);
                             }
                         }
 
-                        if (player.getMainHandStack().isIn(ItemTags.HOES)){
+                        if (player.getMainHandItem().is(ItemTags.HOES)){
                             if (block instanceof LeavesBlock leavesBlock  && getBreakTimeTicks(player,state,world,mutable) == 1) {
-                                interactionManager.attackBlock(mutable, player.getHorizontalFacing());
+                                interactionManager.startDestroyBlock(mutable, player.getDirection());
                             }
                         }
                         if (y >= 0){
-                            if (player.getMainHandStack().isIn(ItemTags.SHOVELS)) {
-                                if (Objects.equals(player.getOffHandStack().getItem(),block.asItem())
+                            if (player.getMainHandItem().is(ItemTags.SHOVELS)) {
+                                if (Objects.equals(player.getOffhandItem().getItem(),block.asItem())
                                         && getBreakTimeTicks(player,state,world,mutable) == 1
                                 ) {
-                                    interactionManager.attackBlock(mutable, player.getHorizontalFacing());
+                                    interactionManager.startDestroyBlock(mutable, player.getDirection());
                                 }
                             }
-                            if (player.getMainHandStack().isIn(ItemTags.PICKAXES)) {
+                            if (player.getMainHandItem().is(ItemTags.PICKAXES)) {
                                 if (
-                                        Objects.equals(player.getOffHandStack().getItem(),block.asItem())
+                                        Objects.equals(player.getOffhandItem().getItem(),block.asItem())
                                                 && getBreakTimeTicks(player,state,world,mutable) == 1
                                 ) {
-                                    interactionManager.attackBlock(mutable, player.getHorizontalFacing());
+                                    interactionManager.startDestroyBlock(mutable, player.getDirection());
                                 }
                             }
                         }
@@ -498,17 +528,17 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
             }
 
 
-        reach = player.getAttributeValue(EntityAttributes.ENTITY_INTERACTION_RANGE);
+        reach = player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
         // 副手是剪刀时，尝试剪附近的羊
-        ItemStack offhand = player.getOffHandStack();
-        if (offhand.isOf(Items.SHEARS)) {
+        ItemStack offhand = player.getOffhandItem();
+        if (offhand.is(Items.SHEARS)) {
             // 使用玩家交互范围作为判定半径
-            Box box = player.getBoundingBox().expand(reach);
-            var sheepList = client.world.getEntitiesByClass(SheepEntity.class, box, s -> !s.isSheared() && !s.isBaby());
+            AABB box = player.getBoundingBox().inflate(reach);
+            var sheepList = client.level.getEntitiesOfClass(Sheep.class, box, s -> !s.isSheared() && !s.isBaby());
 
-            for (SheepEntity sheep : sheepList) {
+            for (Sheep sheep : sheepList) {
                 // 模拟右键互动
-                client.interactionManager.interactEntity(player, sheep, Hand.OFF_HAND);
+                client.gameMode.interact(player, sheep, InteractionHand.OFF_HAND);
             }
         }
 //        if (Set.of(
@@ -531,28 +561,28 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
 
     public static final AtomicLong considerReleaseShieldTimestamp = new AtomicLong(0);
 
-    public static void autoAttackLoop(MinecraftClient client){
+    public static void autoAttackLoop(Minecraft client){
 
-        World world = client.world;
-        ClientPlayerEntity player = client.player;
-        ClientPlayerInteractionManager interactionManager = client.interactionManager;
+        Level world = client.level;
+        LocalPlayer player = client.player;
+        MultiPlayerGameMode interactionManager = client.gameMode;
         if (player == null) return;
-        if (player.getAttackCooldownProgress(0) < 1.f){
+        if (player.getAttackStrengthScale(0) < 1.f){
             return;
         }
         if (world == null) return;
         if (interactionManager == null) return;
 
-        double reach = player.getAttributeValue(EntityAttributes.ENTITY_INTERACTION_RANGE);
+        double reach = player.getAttributeValue(Attributes.ENTITY_INTERACTION_RANGE);
 
-        Box box = player.getBoundingBox().expand(reach);
-        var toAttack = world.getEntitiesByClass(Entity.class, box, s ->
+        AABB box = player.getBoundingBox().inflate(reach);
+        var toAttack = world.getEntitiesOfClass(Entity.class, box, s ->
                 {
                     if (!(s instanceof LivingEntity livingEntity)) return false;
                     if (livingEntity.hurtTime > 0){
                         return false;
                     }
-                    if (!((livingEntity instanceof Monster || livingEntity instanceof HostileEntity) && s.isAlive())){
+                    if (!((livingEntity instanceof Enemy || livingEntity instanceof Monster) && s.isAlive())){
                         return false;
                     }
                     return true;
@@ -560,7 +590,7 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         );
 
         for (var beingAttack : toAttack) {
-            interactionManager.attackEntity(player, beingAttack);
+            interactionManager.attack(player, beingAttack);
         }
     }
 
@@ -574,19 +604,19 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         if (block == Blocks.NETHER_WART) return Items.NETHER_WART;
         return null;
     }
-    private static boolean equipSeedToOffhand(ClientPlayerEntity player, Item neededSeed, MinecraftClient client) {
+    private static boolean equipSeedToOffhand(LocalPlayer player, Item neededSeed, Minecraft client) {
         if (neededSeed == null) return false;
 
-        if (player.getOffHandStack().isOf(neededSeed)) return true;
+        if (player.getOffhandItem().is(neededSeed)) return true;
 
-        return equipToHandIf((stack -> Objects.equals(stack.getItem(),neededSeed)),client,Hand.OFF_HAND);
+        return equipToHandIf((stack -> Objects.equals(stack.getItem(),neededSeed)),client,InteractionHand.OFF_HAND);
     }
 
-    private static boolean hasWaterBelow(PlayerEntity player, World world) {
-        BlockPos pos = player.getBlockPos();
+    private static boolean hasWaterBelow(Player player, Level world) {
+        BlockPos pos = player.blockPosition();
         for (int i = 0; i < 3; i++) {
-            BlockState s = world.getBlockState(pos.down(i));
-            if (s.getFluidState().isIn(FluidTags.WATER)) {
+            BlockState s = world.getBlockState(pos.below(i));
+            if (s.getFluidState().is(FluidTags.WATER)) {
                 return true;
             }
         }
@@ -607,17 +637,20 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
 
 
     private static final AtomicReference<ItemStack> storedStackToTurnBack = new AtomicReference<>();
-    public static void checkIfPlaceWater(MinecraftClient mc){
-        ClientPlayerEntity player = mc.player;
-        World world = mc.world;
-        ClientPlayerInteractionManager interactionManager = mc.interactionManager;
-        ClientCommonNetworkHandler networkHandler = mc.getNetworkHandler();
+    public static void checkIfPlaceWater(Minecraft mc){
+        LocalPlayer player = mc.player;
+        Level world = mc.level;
+        MultiPlayerGameMode interactionManager = mc.gameMode;
+        ClientCommonPacketListenerImpl networkHandler = mc.getConnection();
         if (player == null || world == null || interactionManager == null || networkHandler == null) return;
-        if (world.getDimension().ultrawarm()){return;}
 
-        double reach = player.getAttributeValue(EntityAttributes.BLOCK_INTERACTION_RANGE) - 1;
+        if (world.environmentAttributes().getDimensionValue(EnvironmentAttributes.WATER_EVAPORATES)){
+            return;
+        }
 
-        BlockPos pos = player.getBlockPos();
+        double reach = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) - 1;
+
+        BlockPos pos = player.blockPosition();
 
         int radius = (int) Math.ceil(reach);
 
@@ -629,53 +662,53 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
             return;
         }
 
-        ItemStack offHandStack = player.getOffHandStack();
-        for (ItemStack probablyWaterBucket :player.currentScreenHandler.getStacks()){
+        ItemStack offHandStack = player.getOffhandItem();
+        for (ItemStack probablyWaterBucket :player.containerMenu.getItems()){
             if (Objects.equals(probablyWaterBucket.getItem(),Items.WATER_BUCKET)) {
-                AtomicInteger slot = new AtomicInteger(InventoryUtils.findSlotWithItem(player.currentScreenHandler, probablyWaterBucket, true, false));
-                if (!player.getOffHandStack().isOf(Items.WATER_BUCKET)) {
+                AtomicInteger slot = new AtomicInteger(InventoryUtils.findSlotWithItem(player.containerMenu, probablyWaterBucket, true, false));
+                if (!player.getOffhandItem().is(Items.WATER_BUCKET)) {
                     storedStackToTurnBack.set(offHandStack);
-                    InventoryUtils.swapSlotToHand(mc, slot.get(),Hand.OFF_HAND);
-                    player.sendMessage(Text.of("已找到水桶"),true);//TODO:Translation key
+                    InventoryUtils.swapSlotToHand(mc, slot.get(),InteractionHand.OFF_HAND);
+                    player.displayClientMessage(Component.nullToEmpty("已找到水桶"),true);//TODO:Translation key
                 }
 
                 for (int i = 0; i < 5; i++) {
-                    BlockPos pos2 = pos.down(i);
+                    BlockPos pos2 = pos.below(i);
                     BlockState state = world.getBlockState(pos2);
                     if (isSolidForWaterPlace(state)){
 //                        mc.player.sendMessage(state.getBlock().getName(),false);
 
-                        boolean wasSneaking = player.isSneaking();
+                        boolean wasSneaking = player.isShiftKeyDown();
 //                        if (!wasSneaking){
 //                            forceSneakingFlag.set(true);
 //                        }
-                        if (state.getBlock() instanceof Waterloggable) {
+                        if (state.getBlock() instanceof SimpleWaterloggedBlock) {
                             forceSneakingFlag.set(true);
 
                             runOnNextTickQueue.add(() -> {
-                                player.setYaw(+90.F);
-                                player.setPitch(+90.F);
-                                interactionManager.interactItem(player,Hand.OFF_HAND);
+                                player.setYRot(+90.F);
+                                player.setXRot(+90.F);
+                                interactionManager.useItem(player,InteractionHand.OFF_HAND);
                                 runOnNextTickQueue.add(() -> forceSneakingFlag.set(false));
 
-                                mc.player.sendMessage(Text.of("已尝试落地水"),true);//TODO:Translation key
+                                mc.player.displayClientMessage(Component.nullToEmpty("已尝试落地水"),true);//TODO:Translation key
 
                                 //a kind of cheat?
-                                networkHandler.sendPacket(new PlayerMoveC2SPacket.Full(player.getEntityPos(),90.F,90.F,false,false));
-                                player.setSneaking(wasSneaking);
-                                slot.set(InventoryUtils.findSlotWithItem(player.currentScreenHandler, offHandStack, true, false));
-                                InventoryUtils.swapSlotToHand(mc, slot.get(),Hand.OFF_HAND);
+                                networkHandler.send(new ServerboundMovePlayerPacket.PosRot(player.position(),90.F,90.F,false,false));
+                                player.setShiftKeyDown(wasSneaking);
+                                slot.set(InventoryUtils.findSlotWithItem(player.containerMenu, offHandStack, true, false));
+                                InventoryUtils.swapSlotToHand(mc, slot.get(),InteractionHand.OFF_HAND);
 
                                 runOnNextTickQueue.add(() -> {
 
-                                    for (ItemStack stack1:player.currentScreenHandler.getStacks()){
-                                        if (stack1.isOf(Items.BUCKET)){
-                                            int emptyBucketSlot = InventoryUtils.findSlotWithItem(player.currentScreenHandler, stack1, true, false);
-                                            InventoryUtils.swapSlotToHand(mc,emptyBucketSlot,Hand.OFF_HAND);
+                                    for (ItemStack stack1:player.containerMenu.getItems()){
+                                        if (stack1.is(Items.BUCKET)){
+                                            int emptyBucketSlot = InventoryUtils.findSlotWithItem(player.containerMenu, stack1, true, false);
+                                            InventoryUtils.swapSlotToHand(mc,emptyBucketSlot,InteractionHand.OFF_HAND);
                                             runOnNextTickQueue.add(() -> {
-                                                player.setYaw(+90.F);
-                                                player.setPitch(+90.F);
-                                                interactionManager.interactItem(player, Hand.OFF_HAND);
+                                                player.setYRot(+90.F);
+                                                player.setXRot(+90.F);
+                                                interactionManager.useItem(player, InteractionHand.OFF_HAND);
                                             });
 
 
@@ -685,29 +718,29 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                                 });
                             });
                         }else {
-                            player.setYaw(+90.F);
-                            player.setPitch(+90.F);
-                            interactionManager.interactItem(player,Hand.OFF_HAND);
+                            player.setYRot(+90.F);
+                            player.setXRot(+90.F);
+                            interactionManager.useItem(player,InteractionHand.OFF_HAND);
 
-                            player.sendMessage(Text.of("已尝试落地水"),true);//TODO:Translation
+                            player.displayClientMessage(Component.nullToEmpty("已尝试落地水"),true);//TODO:Translation
 
                             //a kind of cheat?
-                            networkHandler.sendPacket(
-                                    new PlayerMoveC2SPacket.Full(player.getEntityPos(),90.F,90.F,false,false)
+                            networkHandler.send(
+                                    new ServerboundMovePlayerPacket.PosRot(player.position(),90.F,90.F,false,false)
                             );
-                            player.setSneaking(wasSneaking);
-                            slot.set(InventoryUtils.findSlotWithItem(player.currentScreenHandler, offHandStack, true, false));
-                            InventoryUtils.swapSlotToHand(mc, slot.get(),Hand.OFF_HAND);
+                            player.setShiftKeyDown(wasSneaking);
+                            slot.set(InventoryUtils.findSlotWithItem(player.containerMenu, offHandStack, true, false));
+                            InventoryUtils.swapSlotToHand(mc, slot.get(),InteractionHand.OFF_HAND);
                             runOnNextTickQueue.add(() -> {
 
-                                for (ItemStack stack1:player.currentScreenHandler.getStacks()){
-                                    if (stack1.isOf(Items.BUCKET)){
-                                        int emptyBucketSlot = InventoryUtils.findSlotWithItem(player.currentScreenHandler, stack1, true, false);
-                                        InventoryUtils.swapSlotToHand(mc,emptyBucketSlot,Hand.OFF_HAND);
+                                for (ItemStack stack1:player.containerMenu.getItems()){
+                                    if (stack1.is(Items.BUCKET)){
+                                        int emptyBucketSlot = InventoryUtils.findSlotWithItem(player.containerMenu, stack1, true, false);
+                                        InventoryUtils.swapSlotToHand(mc,emptyBucketSlot,InteractionHand.OFF_HAND);
                                         runOnNextTickQueue.add(() -> {
-                                            player.setYaw(+90.F);
-                                            player.setPitch(+90.F);
-                                            interactionManager.interactItem(player,Hand.OFF_HAND);
+                                            player.setYRot(+90.F);
+                                            player.setXRot(+90.F);
+                                            interactionManager.useItem(player,InteractionHand.OFF_HAND);
                                         });
                                     }
                                 }
@@ -723,22 +756,22 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         }
     }
 
-    private static void recoverItemForWaterPlacing(MinecraftClient mc, ClientPlayerEntity player) {
+    private static void recoverItemForWaterPlacing(Minecraft mc, LocalPlayer player) {
         runOnNextTickQueue.add(() -> runOnNextTickQueue.add(() -> {
             ItemStack toTurnBack = storedStackToTurnBack.get();
             storedStackToTurnBack.set(ItemStack.EMPTY);
             if (toTurnBack != null && !toTurnBack.isEmpty()) {
-                int slotHere = InventoryUtils.findSlotWithItem(player.currentScreenHandler, toTurnBack, true, false);
-                InventoryUtils.swapSlotToHand(mc, slotHere, Hand.OFF_HAND);
+                int slotHere = InventoryUtils.findSlotWithItem(player.containerMenu, toTurnBack, true, false);
+                InventoryUtils.swapSlotToHand(mc, slotHere, InteractionHand.OFF_HAND);
             }
         }));
     }
 
-    public static int getBreakTimeTicks(PlayerEntity player, BlockState state, World world, BlockPos pos) {
-        float hardness = state.getHardness(world, pos);
+    public static int getBreakTimeTicks(Player player, BlockState state, Level world, BlockPos pos) {
+        float hardness = state.getDestroySpeed(world, pos);
         if (hardness < 0) return Integer.MAX_VALUE; // 无法破坏
 
-        float speed = player.getBlockBreakingSpeed(state);
+        float speed = player.getDestroySpeed(state);
         float breakTimeTicks = hardness * 1.5f / speed;
 
         // 四舍五入为整数 tick
@@ -747,7 +780,7 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
 
     @Override
     public void registerModHandlers() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
 
         ConfigManager.getInstance().registerConfigHandler(MOD_ID, new Configs());
         Registry.CONFIG_SCREEN.registerConfigScreenFactory(
@@ -757,10 +790,10 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         InputEventHandler.getInputManager().registerKeyboardInputHandler(InputHandler.getInstance());
         InputEventHandler.getInputManager().registerMouseInputHandler(InputHandler.getInstance());
 
-        IRenderer renderer = new RenderHandler();
-        RenderEventHandler.getInstance().registerGameOverlayRenderer(renderer);
-        RenderEventHandler.getInstance().registerTooltipLastRenderer(renderer);
-        RenderEventHandler.getInstance().registerWorldLastRenderer(renderer);
+//        IRenderer renderer = new RenderHandler();
+//        RenderEventHandler.getInstance().registerGameOverlayRenderer(renderer);
+//        RenderEventHandler.getInstance().registerTooltipLastRenderer(renderer);
+//        RenderEventHandler.getInstance().registerWorldLastRenderer(renderer);
 
         TickHandler.getInstance().registerClientTickHandler(new ClientTickHandler());
 

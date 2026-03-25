@@ -1,71 +1,64 @@
 package com.linearity.feedhelper.client.utils;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
-import net.minecraft.screen.PlayerScreenHandler;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.util.Hand;
-
 import java.util.Objects;
 import java.util.function.Function;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 
 public class InventoryUtils {
-    public static void swapSlotToHand(MinecraftClient mc, int slotNumber, Hand hand)
+    public static void swapSlotToHand(Minecraft mc, int slotNumber, InteractionHand hand)
     {
-        //all tries failed
-        PlayerEntity player = mc.player;
+        Player player = mc.player;
         if (player == null) return;
-        ScreenHandler container = player.currentScreenHandler;
+        var connection = mc.getConnection();
+        if (connection == null) return;
+        var gameMode = mc.gameMode;
+        if (gameMode == null) return;
+        AbstractContainerMenu container = player.containerMenu;
 
-        if (slotNumber != -1 && container == player.playerScreenHandler)
+        if (slotNumber != -1 && container == player.inventoryMenu)
         {
-            PlayerInventory inventory = player.getInventory();
+            Inventory inventory = player.getInventory();
 
-            if (hand == Hand.MAIN_HAND)
+            if (hand == InteractionHand.MAIN_HAND)
             {
                 int currentHotbarSlot = inventory.getSelectedSlot();
 
                 if (isHotbarSlot(slotNumber))
                 {
-                    inventory.setSelectedSlot(slotNumber - 36);;
-                    mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(inventory.getSelectedSlot()));
+                    inventory.setSelectedSlot(slotNumber - 36);
+                    connection.send(new ServerboundSetCarriedItemPacket(inventory.getSelectedSlot()));
                 }
                 else
                 {
-                    mc.interactionManager.clickSlot(container.syncId, slotNumber, currentHotbarSlot, SlotActionType.SWAP, mc.player);
+                    gameMode.handleInventoryMouseClick(container.containerId, slotNumber, currentHotbarSlot, ClickType.SWAP, mc.player);
                 }
 //                System.out.println("swapped to main hand");
             }
-            else if (hand == Hand.OFF_HAND)
+            else if (hand == InteractionHand.OFF_HAND)
             {
-                mc.interactionManager.clickSlot(container.syncId, slotNumber, 40, SlotActionType.SWAP, mc.player);
-//                if (player.getOffHandStack() != ItemStack.EMPTY){
-//                    System.out.println("swapped to offHand"
-//                            + container.syncId
-//                            + String.valueOf(slotNumber)
-//                            + 40 + SlotActionType.SWAP
-//                            + mc.player);
-                    return;
-//                }
-//                System.out.println("swapped to off hand failed");
+                gameMode.handleInventoryMouseClick(container.containerId, slotNumber, 40, ClickType.SWAP, mc.player);
             }
         }
     }
 
-    public static void swapSlotToOffhand(MinecraftClient mc, int slotNumber)
+    @SuppressWarnings("unused")
+    public static void swapSlotToOffhand(Minecraft mc, int slotNumber)
     {
-        swapSlotToHand(mc, slotNumber, Hand.OFF_HAND);
+        swapSlotToHand(mc, slotNumber, InteractionHand.OFF_HAND);
     }
 
     private static boolean isHotbarSlot(Slot slot)
     {
-        return slot.getIndex() >= 36 && slot.getIndex() <= 44;
+        return slot.getContainerSlot() >= 36 && slot.getContainerSlot() <= 44;
     }
 
     private static boolean isHotbarSlot(int slotNumber)
@@ -73,22 +66,22 @@ public class InventoryUtils {
         return slotNumber >= 36 && slotNumber <= 44;
     }
 
-    public static int findSlotWithItem(ScreenHandler container, ItemStack stackReference, boolean allowHotbar, boolean reverse)
+    public static int findSlotWithItem(AbstractContainerMenu container, ItemStack stackReference, boolean allowHotbar, boolean reverse)
     {
         final int startSlot = reverse ? container.slots.size() - 1 : 0;
         final int endSlot = reverse ? -1 : container.slots.size();
         final int increment = reverse ? -1 : 1;
-        final boolean isPlayerInv = container instanceof PlayerScreenHandler;
+        final boolean isPlayerInv = container instanceof InventoryMenu;
 
         for (int slotNum = startSlot; slotNum != endSlot; slotNum += increment)
         {
             Slot slot = container.slots.get(slotNum);
 
-            if ((!isPlayerInv || isRegularInventorySlot(slot.id, false)) &&
+            if ((!isPlayerInv || isRegularInventorySlot(slot.index, false)) &&
                     (allowHotbar || !isHotbarSlot(slot)) &&
-                    areStacksEqualIgnoreDurability(slot.getStack(), stackReference))
+                    areStacksEqualIgnoreDurability(slot.getItem(), stackReference))
             {
-                return slot.id;
+                return slot.index;
             }
         }
 
@@ -109,26 +102,26 @@ public class InventoryUtils {
         ref.setCount(1);
         check.setCount(1);
 
-        if (ref.isDamageable() && ref.isDamaged())
+        if (ref.isDamageableItem() && ref.isDamaged())
         {
-            ref.setDamage(0);
+            ref.setDamageValue(0);
         }
-        if (check.isDamageable() && check.isDamaged())
+        if (check.isDamageableItem() && check.isDamaged())
         {
-            check.setDamage(0);
+            check.setDamageValue(0);
         }
 
-        return ItemStack.areItemsAndComponentsEqual(ref, check);
+        return ItemStack.isSameItemSameComponents(ref, check);
     }
 
-    public static boolean equipToHandIf(Function<ItemStack,Boolean> ifToEquip, MinecraftClient client,Hand hand){
+    public static boolean equipToHandIf(Function<ItemStack,Boolean> ifToEquip, Minecraft client,InteractionHand hand){
         if (client == null) return false;
         var player = client.player;
         if (player == null) return false;
 
-        for (ItemStack stack:player.currentScreenHandler.getStacks()){
+        for (ItemStack stack:player.containerMenu.getItems()){
             if (Objects.equals(ifToEquip.apply(stack),true)) {
-                int slot = InventoryUtils.findSlotWithItem(player.currentScreenHandler,stack,true,false);
+                int slot = InventoryUtils.findSlotWithItem(player.containerMenu,stack,true,false);
                 InventoryUtils.swapSlotToHand(client, slot, hand);
                 return true;
             }

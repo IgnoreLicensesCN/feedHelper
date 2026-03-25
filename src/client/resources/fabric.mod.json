@@ -15,13 +15,9 @@
     ],
     "client": [
       "com.linearity.feedhelper.client.FeedhelperClient"
-    ],
-    "main": [
-      "com.linearity.feedhelper.Feedhelper"
     ]
   },
   "mixins": [
-    "feedhelper.mixins.json",
     {
       "config": "feedhelper.client.mixins.json",
       "environment": "client"

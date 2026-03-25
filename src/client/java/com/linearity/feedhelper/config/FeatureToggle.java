@@ -26,6 +26,7 @@ public enum FeatureToggle implements IHotkeyTogglable, IConfigNotifiable<IConfig
     ACTIVE_DEFENSE_SHIELDING  ("activeDefenseShielding",         false, ""),
     AUTO_ATTACK  ("autoAttack",         false, ""),
     FILL_LAVA  ("fillLava",         false, ""),
+    FILL_LAVA_WHEN_MINING  ("fillLavaWhenMining",         false, ""),
     RANGING_SYSTEM  ("rangingSystem",         true, ""),
     ENTITY_GLOWING  ("entityGlowing",         true, ""),
     AUTO_TORCH  ("autoTorch",         false, ""),
@@ -34,6 +35,7 @@ public enum FeatureToggle implements IHotkeyTogglable, IConfigNotifiable<IConfig
     AVOID_ELYTRA_RESISTANCE("avoidElytraResistance",         false, ""),
     DISABLE_FOG("disableDarknessFog",         false, ""),
     AUTO_CHANGE_CROSSBOW("autoChangeCrossbow",         false, ""),
+    ELYTRA_CREATIVE_FLYING("elytraCreativeFlying",         false, ""),
     ;
 
     public static final ImmutableList<FeatureToggle> VALUES = ImmutableList.copyOf(values());
