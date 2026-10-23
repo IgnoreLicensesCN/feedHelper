@@ -26,7 +26,10 @@
     "PlayerEntityMixin",
     "PlayerInputMixin",
     "VertexConsumerProviderImmediateAcccessor",
-    "WorldRendererMixin"
+    "WorldRendererMixin",
+    "AbstractArrowAccessor",
+    "ProjectileAccessor",
+    "FireworkRocketEntityAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

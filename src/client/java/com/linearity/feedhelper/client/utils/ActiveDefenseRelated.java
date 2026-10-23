@@ -21,6 +21,7 @@ import net.minecraft.world.entity.monster.zombie.Drowned;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ShulkerBullet;
 import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
+import net.minecraft.world.entity.projectile.arrow.Arrow;
 import net.minecraft.world.entity.projectile.arrow.SpectralArrow;
 import net.minecraft.world.entity.projectile.arrow.ThrownTrident;
 import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
@@ -47,7 +48,7 @@ import static com.linearity.feedhelper.client.utils.ShotTracker.lastShotTicks;
 
 public class ActiveDefenseRelated {
 
-    public static interface EntityHitPredicationCalculator<E extends Entity> {
+    public interface EntityHitPredicationCalculator<E extends Entity> {
         double calculate(@NotNull E entity,@NotNull LocalPlayer player,@NotNull AtomicBoolean hasHostileShooterFlagProvider);
     }
     //shielding related
@@ -206,6 +207,7 @@ public class ActiveDefenseRelated {
                 (abstractArrow,player,hasHostileShooter) ->
                         getTicksToReachPlayerForSkeletonArrow(abstractArrow,player);
         entityCalculators.put(AbstractArrow.class,arrowHitPredicationCalculator);
+        entityCalculators.put(Arrow.class,arrowHitPredicationCalculator);
         entityCalculators.put(SpectralArrow.class,arrowHitPredicationCalculator);
         entityCalculators.put(ThrownTrident.class,arrowHitPredicationCalculator);//TODO:ThrownTrident
         EntityHitPredicationCalculator<@NotNull SmallFireball> smallFireballEntityHitPredicationCalculator =

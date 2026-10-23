@@ -87,11 +87,11 @@ public class Configs implements IConfigHandler {
 
     public static void saveToFile() {
         Path dir = FileUtils.getConfigDirectoryAsPath();
-        if (!Files.exists(dir, new LinkOption[0])) {
+        if (!Files.exists(dir)) {
             FileUtils.createDirectoriesIfMissing(dir);
         }
 
-        if (Files.isDirectory(dir, new LinkOption[0])) {
+        if (Files.isDirectory(dir)) {
             JsonObject root = new JsonObject();
             ConfigUtils.writeConfigBase(root, "Fixes", Fixes.OPTIONS);
             ConfigUtils.writeConfigBase(root, "Generic", Generic.OPTIONS);
@@ -123,6 +123,8 @@ public class Configs implements IConfigHandler {
         public static final ConfigDouble AVOID_ELYTRA_COLLISION_MIN_SPEED = new ConfigDouble("avoidElytraCollisionMinSpeed",0.1).apply(GENERIC_KEY);
         public static final ConfigDouble ELYTRA_CREATIVE_FLYING_DIRECTION_SPEED = new ConfigDouble("elytraCreativeFlyingDirectionSpeed",1.2).apply(GENERIC_KEY);
         public static final ConfigDouble ELYTRA_CREATIVE_SPRINT_SPEED_MULTIPLIER = new ConfigDouble("elytraCreativeFlyingSprintSpeedMultiplier",2).apply(GENERIC_KEY);
+
+        public static final ConfigInteger PREDICATE_PROJECTILE_TICKS = new ConfigInteger("predicateProjectileTicks",50).apply(GENERIC_KEY);
         public static final ImmutableList<IConfigBase> OPTIONS;
         public static final ImmutableList<IHotkey> HOTKEYS;
 
@@ -139,7 +141,8 @@ public class Configs implements IConfigHandler {
                     ELYTRA_SPEED_DOWN_MULTIPLIER,
                     AVOID_ELYTRA_COLLISION_MIN_SPEED,
                     ELYTRA_CREATIVE_FLYING_DIRECTION_SPEED,
-                    ELYTRA_CREATIVE_SPRINT_SPEED_MULTIPLIER
+                    ELYTRA_CREATIVE_SPRINT_SPEED_MULTIPLIER,
+                    PREDICATE_PROJECTILE_TICKS
             );
             HOTKEYS = ImmutableList.of();
         }

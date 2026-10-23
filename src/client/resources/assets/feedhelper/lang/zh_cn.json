@@ -1,9 +1,13 @@
 {
+  "feedhelper.placeWaterPreventDamage.tried": "已尝试落地水",
+  "feedhelper.placeWaterPreventDamage.found_water_bucket": "已找到水桶",
+
   "feedhelper.gui.button.config_gui.generic": "通用",
   "feedhelper.gui.button.config_gui.fixes": "修复",
   "feedhelper.gui.button.config_gui.lists": "列表",
   "feedhelper.gui.button.config_gui.tweaks": "修改",
   "feedhelper.gui.button.config_gui.generic_hotkeys": "通用快捷键",
+  "feedhelper.gui.button.config_gui.ranging_system": "弹道计算机配置",
   "feedhelper.gui.button.config_gui.disables": "禁用",
 
   "feedhelper.config.tweaks.name.entityGlowing": "实体发光",
@@ -91,5 +95,15 @@
   "feedhelper.config.generic.comment.elytraCreativeFlyingDirectionSpeed": "鞘翅创造飞水平移动速度",
   "feedhelper.config.generic.name.elytraCreativeFlyingSprintSpeedMultiplier": "鞘翅创造飞疾跑速度倍率",
   "feedhelper.config.generic.prettyName.elytraCreativeFlyingSprintSpeedMultiplier": "鞘翅创造飞疾跑速度倍率",
-  "feedhelper.config.generic.comment.elytraCreativeFlyingSprintSpeedMultiplier": "鞘翅创造飞疾跑速度倍率"
+  "feedhelper.config.generic.comment.elytraCreativeFlyingSprintSpeedMultiplier": "鞘翅创造飞疾跑速度倍率",
+  "feedhelper.config.generic.name.predicateProjectileTicks": "弹道预测tick数",
+  "feedhelper.config.generic.prettyName.predicateProjectileTicks": "弹道预测tick数",
+  "feedhelper.config.generic.comment.predicateProjectileTicks": "弹道预测tick数",
+
+  "feedhelper.config.ranging_system_tweaks.name.show_creeper_range": "显示苦力怕爆炸范围",
+  "feedhelper.config.ranging_system_tweaks.prettyName.show_creeper_range": "显示苦力怕爆炸范围",
+  "feedhelper.config.ranging_system_tweaks.comment.show_creeper_range": "显示苦力怕爆炸范围",
+  "feedhelper.config.ranging_system_tweaks.name.show_arrow_hit_result": "显示手中远程武器预计命中目标",
+  "feedhelper.config.ranging_system_tweaks.prettyName.show_arrow_hit_result": "显示手中远程武器预计命中目标",
+  "feedhelper.config.ranging_system_tweaks.comment.show_arrow_hit_result": "显示手中远程武器预计命中目标"
 }

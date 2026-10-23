@@ -1,18 +1,12 @@
 package com.linearity.feedhelper.client;
 
-import com.linearity.feedhelper.client.event.ClientTickHandler;
-import com.linearity.feedhelper.client.event.InputHandler;
-import com.linearity.feedhelper.client.event.RenderHandler;
 import com.linearity.feedhelper.client.mixin.AbstractBlockAccessor;
 import com.linearity.feedhelper.client.utils.InventoryUtils;
-import com.linearity.feedhelper.config.Callbacks;
-import com.linearity.feedhelper.config.Configs;
+import com.linearity.feedhelper.client.utils.RenderingUtils;
+import com.linearity.feedhelper.client.utils.projectiletrace.HitResultFrameInfo;
 import com.linearity.feedhelper.config.FeatureToggle;
 import com.linearity.feedhelper.gui.GuiConfigs;
-import fi.dy.masa.malilib.config.ConfigManager;
 import fi.dy.masa.malilib.event.*;
-import fi.dy.masa.malilib.interfaces.IInitializationHandler;
-import fi.dy.masa.malilib.interfaces.IRenderer;
 
 import fi.dy.masa.malilib.registry.Registry;
 import fi.dy.masa.malilib.util.data.ModInfo;
@@ -74,7 +68,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import static com.linearity.feedhelper.client.utils.InventoryUtils.equipToHandIf;
 import static com.linearity.feedhelper.client.utils.RangingSystemRelated.*;
 
-public class FeedhelperClient implements ClientModInitializer , IInitializationHandler {
+//TODO:Elytra force stop key.
+public class FeedhelperClient implements ClientModInitializer {
     public static final String MOD_ID = "feedhelper";
     public static final String MOD_NAME = "feedHelper";
 
@@ -85,12 +80,17 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
 
     public static final Queue<Runnable> runOnNextTickQueue = new ConcurrentLinkedQueue<>();
 
+    public static final Queue<HitResultFrameInfo> hitResultInfo = new ConcurrentLinkedQueue<>();
 
     @Override
     public void onInitializeClient() {
-
-        InitializationHandler.getInstance().registerInitializationHandler(this);
-
+        InitializationHandler.getInstance().registerInitializationHandler(new FeedHelperInitHandler());
+        Registry.CONFIG_SCREEN.registerConfigScreenFactory(
+                new ModInfo(MOD_ID, MOD_NAME, GuiConfigs::new)
+        );
+        Registry.CONFIG_SCREEN.registerConfigScreenFactory(
+                new ModInfo(MOD_ID+"placeholder", MOD_NAME+"placeholder", GuiConfigs::new)
+        );//bug with malilib that i have to get a placeholder to make it clickable(the last one is not clickable
 
 
         WorldRenderEvents.BEFORE_TRANSLUCENT.register((context) -> {
@@ -107,10 +107,60 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                 Identifier.fromNamespaceAndPath("feedhelper", "debug_rect"),
                 (drawContext, renderTickCounter) -> {
                     var client = Minecraft.getInstance();
-                    float delta = client.getDeltaTracker().getGameTimeDeltaTicks();
 
                     if (FeatureToggle.RANGING_SYSTEM.getBooleanValue()){
-                        rangingSystemLoopRenderingOnHUD(client, drawContext, delta);
+                        while (!hitResultInfo.isEmpty()) {
+                            // 使用 poll 移除并获取，确保不会重复渲染旧数据
+                            HitResultFrameInfo frame = hitResultInfo.poll();
+
+                            if (frame != null) {
+                                var font = client.font;
+                                int x = frame.x();
+                                int y = frame.y();
+                                String text = frame.printText();
+                                String currentHealthLine = frame.currentHealthLine();
+                                String expectHitHealthLine = frame.expectHitHealthLine();
+                                int color = frame.color();
+                                RenderingUtils.drawRect(
+                                        drawContext,
+                                        x - RenderingUtils.rectSize,
+                                        y - RenderingUtils.rectSize,
+                                        x + RenderingUtils.rectSize,
+                                        y + RenderingUtils.rectSize,
+                                        color
+                                );
+                                drawContext.drawString(
+                                        font,
+                                        text,
+                                        x - RenderingUtils.rectSize,
+                                        y + RenderingUtils.rectSize,
+                                        color,
+                                        false
+                                );
+                                if (!currentHealthLine.isEmpty()) {
+                                    drawContext.drawString(
+                                            font,
+                                            currentHealthLine,
+                                            x - RenderingUtils.rectSize,
+                                            y + RenderingUtils.rectSize + font.lineHeight,
+                                            color,
+                                            false
+                                    );
+                                }
+                                if (!expectHitHealthLine.isEmpty()) {
+                                    drawContext.drawString(
+                                            font,
+                                            expectHitHealthLine,
+                                            x - RenderingUtils.rectSize,
+                                            y + RenderingUtils.rectSize + font.lineHeight*2,
+                                            color,
+                                            false
+                                    );
+                                }
+                            }
+                        }
+                    } else {
+                        hitResultInfo.clear();
                     }
                 }
         );
@@ -123,11 +173,11 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         if (player == null || world == null || interactionManager == null) return;
         InteractionHand hand = InteractionHand.OFF_HAND;
         ItemStack handStack = player.getOffhandItem();
-        if (handStack == null || handStack.isEmpty()) {
+        if (handStack.isEmpty()) {
             hand = InteractionHand.MAIN_HAND;
         }
         handStack = player.getMainHandItem();
-        if (handStack == null || handStack.isEmpty()) {
+        if (handStack.isEmpty()) {
             return;
         }
         Set<BlockPos> placedPos = new HashSet<>();
@@ -158,12 +208,12 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                     if (centerState.getFluidState().is(FluidTags.LAVA)){continue;}
                     BlockHitResult hitResult;
                     Tuple<BlockPos,Direction>[] pairs = new Tuple[]{
-                            new Tuple(center.above(),Direction.UP),
-                            new Tuple(center.below(),Direction.DOWN),
-                            new Tuple(center.north(),Direction.NORTH),
-                            new Tuple(center.south(),Direction.SOUTH),
-                            new Tuple(center.west(),Direction.WEST),
-                            new Tuple(center.east(),Direction.EAST),
+                            new Tuple<>(center.above(),Direction.UP),
+                            new Tuple<>(center.below(),Direction.DOWN),
+                            new Tuple<>(center.north(),Direction.NORTH),
+                            new Tuple<>(center.south(),Direction.SOUTH),
+                            new Tuple<>(center.west(),Direction.WEST),
+                            new Tuple<>(center.east(),Direction.EAST),
                     };
                     for (Tuple<BlockPos,Direction> pair : pairs) {
                         if (placedPos.contains(pair.getA())) {
@@ -196,9 +246,9 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
 
         InteractionHand hand = InteractionHand.MAIN_HAND;
         ItemStack handStack = player.getMainHandItem();
-        if (handStack == null || handStack.isEmpty() || !handStack.is(Items.TORCH)) {
+        if (handStack.isEmpty() || !handStack.is(Items.TORCH)) {
             handStack = player.getOffhandItem();
-            if (handStack == null || handStack.isEmpty() || !handStack.is(Items.TORCH)) {
+            if (handStack.isEmpty() || !handStack.is(Items.TORCH)) {
                 return; // 双手都没有火把
             }
             hand = InteractionHand.OFF_HAND;
@@ -255,10 +305,7 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                                     center,
                                     false
                             );
-                            boolean noMoreTorchOnHand = false;
-                            if (handStack.getCount() == 1){
-                                noMoreTorchOnHand = true;
-                            }
+                            boolean noMoreTorchOnHand = handStack.getCount() == 1;
 
                             interactionManager.useItemOn(player, hand, hitResult);
                             if (noMoreTorchOnHand) {
@@ -630,7 +677,9 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         if (state.isAir()) return false;
 
         // 不是流体（例如水方块 / 岩浆方块）
-        if (!state.getFluidState().isEmpty()) return false;
+        if (!state.getFluidState().isEmpty()) {
+            return false;
+        }
 
         return true;
     }
@@ -669,7 +718,7 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                 if (!player.getOffhandItem().is(Items.WATER_BUCKET)) {
                     storedStackToTurnBack.set(offHandStack);
                     InventoryUtils.swapSlotToHand(mc, slot.get(),InteractionHand.OFF_HAND);
-                    player.displayClientMessage(Component.nullToEmpty("已找到水桶"),true);//TODO:Translation key
+                    player.displayClientMessage(Component.translatable("feedhelper.placeWaterPreventDamage.found_water_bucket"),true);
                 }
 
                 for (int i = 0; i < 5; i++) {
@@ -691,7 +740,9 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                                 interactionManager.useItem(player,InteractionHand.OFF_HAND);
                                 runOnNextTickQueue.add(() -> forceSneakingFlag.set(false));
 
-                                mc.player.displayClientMessage(Component.nullToEmpty("已尝试落地水"),true);//TODO:Translation key
+                                if (mc.player != null) {
+                                    mc.player.displayClientMessage(Component.translatable("feedhelper.placeWaterPreventDamage.tried"),true);
+                                }
 
                                 //a kind of cheat?
                                 networkHandler.send(new ServerboundMovePlayerPacket.PosRot(player.position(),90.F,90.F,false,false));
@@ -722,7 +773,7 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
                             player.setXRot(+90.F);
                             interactionManager.useItem(player,InteractionHand.OFF_HAND);
 
-                            player.displayClientMessage(Component.nullToEmpty("已尝试落地水"),true);//TODO:Translation
+                            player.displayClientMessage(Component.translatable("feedhelper.placeWaterPreventDamage.tried"),true);
 
                             //a kind of cheat?
                             networkHandler.send(
@@ -778,25 +829,4 @@ public class FeedhelperClient implements ClientModInitializer , IInitializationH
         return Math.max(1, Math.round(breakTimeTicks));
     }
 
-    @Override
-    public void registerModHandlers() {
-        Minecraft client = Minecraft.getInstance();
-
-        ConfigManager.getInstance().registerConfigHandler(MOD_ID, new Configs());
-        Registry.CONFIG_SCREEN.registerConfigScreenFactory(
-                new ModInfo(MOD_ID, MOD_NAME, GuiConfigs::new)
-        );
-        InputEventHandler.getKeybindManager().registerKeybindProvider(InputHandler.getInstance());
-        InputEventHandler.getInputManager().registerKeyboardInputHandler(InputHandler.getInstance());
-        InputEventHandler.getInputManager().registerMouseInputHandler(InputHandler.getInstance());
-
-//        IRenderer renderer = new RenderHandler();
-//        RenderEventHandler.getInstance().registerGameOverlayRenderer(renderer);
-//        RenderEventHandler.getInstance().registerTooltipLastRenderer(renderer);
-//        RenderEventHandler.getInstance().registerWorldLastRenderer(renderer);
-
-        TickHandler.getInstance().registerClientTickHandler(new ClientTickHandler());
-
-        Callbacks.init(client);
-    }
 }

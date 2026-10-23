@@ -1,34 +1,35 @@
 package com.linearity.feedhelper.client.utils;
 
+import com.linearity.feedhelper.client.mixin.AbstractArrowAccessor;
 import com.linearity.feedhelper.client.mixin.CreeperEntityAccessor;
+import com.linearity.feedhelper.client.utils.projectiletrace.IProjectileSimulator;
+import com.linearity.feedhelper.client.utils.projectiletrace.ProjectileSimulateContext;
+import com.linearity.feedhelper.client.utils.projectiletrace.ProjectileState;
+import com.linearity.feedhelper.client.utils.projectiletrace.additionalinfo.FireworkRocketAdditionalInfo;
+import com.linearity.feedhelper.client.utils.projectiletrace.impl.AbstractArrowSimulator;
+import com.linearity.feedhelper.client.utils.projectiletrace.impl.FireworkSimulator;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.MagmaCube;
 import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.arrow.Arrow;
+import net.minecraft.world.entity.projectile.FireworkRocketEntity;
+import net.minecraft.world.entity.projectile.arrow.AbstractArrow;
 import net.minecraft.world.entity.projectile.hurtingprojectile.DragonFireball;
 import net.minecraft.world.entity.projectile.hurtingprojectile.SmallFireball;
 import net.minecraft.world.entity.projectile.hurtingprojectile.WitherSkull;
 import net.minecraft.world.item.BowItem;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.item.TridentItem;
-import net.minecraft.world.item.component.ChargedProjectiles;
-import net.minecraft.world.item.component.FireworkExplosion;
-import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
@@ -36,13 +37,16 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import org.jetbrains.annotations.NotNull;
 import org.joml.Vector3f;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.linearity.feedhelper.client.utils.ProjectilePredictionRenderer.*;
 import static com.linearity.feedhelper.client.utils.RenderingUtils.*;
+import static com.linearity.feedhelper.client.utils.projectiletrace.impl.AbstractArrowSimulator.arrowInertiaAtPosFunc;
+import static com.linearity.feedhelper.config.Configs.Generic.PREDICATE_PROJECTILE_TICKS;
+import static com.linearity.feedhelper.config.RangingSystemFeatureToggle.SHOW_CREEPER_RANGE;
 
 public class RangingSystemRelated {
 
@@ -50,152 +54,6 @@ public class RangingSystemRelated {
     public static void rangingSystemLoopRendering(Minecraft client,PoseStack matrices,float tickDelta) {
         renderForPredictEntities(client,matrices,tickDelta);
     }
-    public static void rangingSystemLoopRenderingOnHUD(Minecraft client, GuiGraphics context, float tickDelta) {
-
-        renderArrowHitTargetIfExists(client,context,tickDelta);
-
-    }
-
-    public static void renderArrowHitTargetIfExists(Minecraft client, GuiGraphics context, float tickDelta) {
-        var player = client.player;
-        var world = client.level;
-        if (player == null || world == null) return;
-
-        List<Vec3> arrowPositions = new ArrayList<>();
-        List<Vec3> velocityVectors = new ArrayList<>();
-
-        // 玩家拉弓中
-        if (player.isUsingItem() && (player.getUseItem().getItem() instanceof BowItem)) {
-            int useTicks = player.getTicksUsingItem();
-            float f = useTicks / 20.0f;
-            float velocity = (f * f + f * 2.0f) / 3.0f;
-            velocity = Math.min(velocity, 1.0f);
-
-            Vec3 startPos = player.getEyePosition();
-            Vec3 velocityVec = player.getViewVector(tickDelta).scale(velocity * 3.0);
-
-            arrowPositions.add(startPos);
-            velocityVectors.add(velocityVec);
-        }
-
-        // 检查主手和副手的弩
-        List<ItemStack> crossbows = Arrays.asList(player.getMainHandItem(), player.getOffhandItem());
-        for (ItemStack stack : crossbows) {
-            if (!(stack.getItem() instanceof CrossbowItem) || !CrossbowItem.isCharged(stack)) continue;
-
-            ChargedProjectiles projectiles = stack.getOrDefault(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.EMPTY);
-            AtomicBoolean hasRocketFlag = new AtomicBoolean(false);
-            for (ItemStack proj : projectiles.getItems()) {
-                if (proj.is(Items.FIREWORK_ROCKET)) {
-                    hasRocketFlag.set(true);
-                    break;
-                }
-            }
-            if (hasRocketFlag.get()){
-                continue;
-            }
-            AtomicBoolean hasMultishot = new AtomicBoolean(false);
-            stack.getEnchantments().keySet().forEach(e -> e.unwrapKey().ifPresent(key -> {
-                if (key == Enchantments.MULTISHOT) hasMultishot.set(true);
-            }));
-
-            // 偏移角度
-            float[] angles = hasMultishot.get() ? new float[]{0f, 10f, -10f} : new float[]{0f};
-            float speed = 3.15f;
-
-            for (float angle : angles) {
-                Vec3 startPos = player.getEyePosition();
-                // 基于玩家旋转和角度偏移
-                float yaw = player.getViewYRot(tickDelta);
-                float pitch = player.getViewXRot(tickDelta);
-                double yawRad = Math.toRadians(-yaw + angle); // yaw 偏移
-                double pitchRad = Math.toRadians(-pitch);
-
-                Vec3 vel = new Vec3(
-                        Math.sin(yawRad) * Math.cos(pitchRad),
-                        Math.sin(pitchRad),
-                        Math.cos(yawRad) * Math.cos(pitchRad)
-                ).normalize().scale(speed);
-
-                arrowPositions.add(startPos);
-                velocityVectors.add(vel);
-            }
-        }
-
-        if (arrowPositions.isEmpty()) return;
-
-        // 模拟每条箭的轨迹
-        for (int idx = 0; idx < arrowPositions.size(); idx++) {
-            Vec3 arrowPos = arrowPositions.get(idx);
-            Vec3 velocityVec = velocityVectors.get(idx);
-
-            Entity targetEntity = null;
-            BlockHitResult targetBlock = null;
-            Vec3 hitPos = null;
-            float tickStep = 0f;
-
-            // 获取附近实体列表
-            List<Entity> entities = new LinkedList<>();
-            world.entitiesForRendering().forEach(entity -> {
-                if (entity != player && entity.isAlive() && !entity.isSpectator()) entities.add(entity);
-            });
-
-            // 模拟箭矢轨迹
-            for (int i = 0; i < 200; i++) {
-                Vec3 nextPos = arrowPos.add(velocityVec);
-
-                // 方块碰撞
-                BlockHitResult blockHit = world.clip(new ClipContext(
-                        arrowPos, nextPos, ClipContext.Block.OUTLINE,
-                        ClipContext.Fluid.ANY, player
-                ));
-                if (blockHit.getType() != HitResult.Type.MISS) {
-                    targetBlock = blockHit;
-                    hitPos = new Vec3(
-                            blockHit.getBlockPos().getX() + 0.5,
-                            blockHit.getBlockPos().getY() + 0.5,
-                            blockHit.getBlockPos().getZ() + 0.5
-                    );
-                    break;
-                }
-
-                // 实体碰撞
-                for (Entity entity : entities) {
-                    Vec3 predictedPos = entity.position().add(entity.getDeltaMovement().scale(tickStep));
-                    AABB predictedBox = entity.getBoundingBox().move(predictedPos.subtract(entity.position()));
-                    Optional<Vec3> intersect = predictedBox.clip(arrowPos, nextPos);
-                    if (intersect.isPresent()) {
-                        targetEntity = entity;
-                        hitPos = intersect.get();
-                        break;
-                    }
-                }
-                if (hitPos != null) break;
-
-                // 更新箭矢位置和速度
-                arrowPos = nextPos;
-                velocityVec = velocityVec.scale(0.99).add(0, -0.05, 0);
-                tickStep += 1f;
-            }
-
-            if (hitPos == null) continue;
-
-            Vec3 screen = RenderingUtils.worldToScreen(client, hitPos);
-            if (screen == null) continue;
-
-            int x = (int) screen.x;
-            int y = (int) screen.y;
-            RenderingUtils.drawRect(context, x - RenderingUtils.rectSize, y - RenderingUtils.rectSize, x + RenderingUtils.rectSize, y + RenderingUtils.rectSize, 0xFF39C5BB);
-
-            String name = targetEntity != null ? targetEntity.getName().getString()
-                    : world.getBlockState(targetBlock.getBlockPos()).getBlock().getName().getString();
-            if (name == null) continue;
-
-            String printText = name + " " + String.format("x=%.3f,y=%.3f,z=%.3f", hitPos.x(), hitPos.y(), hitPos.z());
-            context.drawString(client.font, printText, x - RenderingUtils.rectSize, y + RenderingUtils.rectSize, 0xFF39C5BB, false);
-        }
-    }
-
 
     public static void renderForPredictEntities(Minecraft client, PoseStack matrices, float tickDelta) {
         var world = client.level;
@@ -207,14 +65,10 @@ public class RangingSystemRelated {
         var cameraPos = camera.position();
 
         for (Entity entity : world.entitiesForRendering()) {
-
-            // Dragon fireball
             if (entity instanceof DragonFireball fireball) {
                 renderDragonFireballHitRange(client,world,fireball, matrices, tickDelta);
                 continue;
             }
-
-            // Wither skull
             if (entity instanceof WitherSkull skull) {
                 renderWitherFiringSkullHitRange(client,world,skull, matrices, tickDelta, cameraPos);
                 continue;
@@ -224,28 +78,41 @@ public class RangingSystemRelated {
                 continue;
             }
             if (entity instanceof Creeper creeper) {
-                renderCreeperBoomRange(client,world,creeper, matrices, tickDelta);
+                renderCreeperBoomRange(client, creeper, matrices, tickDelta);
                 continue;
             }
             if (entity instanceof SmallFireball smallFireball){
-                renderSmallFireballHitLocation(client,world,smallFireball, matrices, tickDelta);
+                renderSmallFireballHitLocation(client,world,smallFireball, matrices);
                 continue;
             }
-            if (entity instanceof Arrow arrow){
-                renderArrowPredictedPath(client, world, arrow, matrices, tickDelta);
+            if (entity instanceof AbstractArrow arrow){
+                renderArrowPredictedPath(client, arrow, matrices);
+                continue;
+            }
+            if (entity instanceof FireworkRocketEntity rocket){
+                renderFireworkPrediction(
+                        world,
+                        matrices,
+                        cameraPos,
+                        rocket.getItem(),
+                        rocket.position(),
+                        rocket.getDeltaMovement(),
+                        FireworkRocketAdditionalInfo.of(rocket)
+                );
                 continue;
             }
             if (entity instanceof Player player){
-                renderPlayerWeaponPrediction(client, world,player, matrices, tickDelta);
+                renderPlayerWeaponPrediction(world,player, matrices, tickDelta);
                 continue;
             }
         }
     }
+
     public static void renderSmallFireballHitLocation(Minecraft client,
                                                       ClientLevel world,
                                                       SmallFireball fireball,
-                                                      PoseStack matrices,
-                                                      float tickDelta) {
+                                                      PoseStack matrices
+    ) {
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
         var cameraPos = camera.position();
@@ -283,58 +150,60 @@ public class RangingSystemRelated {
         RenderingUtils.renderBeam(matrices, start, end, color, beamWidth);
     }
 
-    public static List<Vec3> predictArrowPath(Vec3 startPos, Vec3 velocity, ClientLevel world, int maxTicks) {
-        List<Vec3> path = new ArrayList<>();
-        Vec3 pos = startPos;
-        Vec3 vel = velocity;
+    public static List<ProjectileState> predictArrowPath(AbstractArrow arrow, int maxTicks) {
+        ProjectileState state = new ProjectileState(arrow.position(),arrow.getDeltaMovement(),arrow.isOnFire(),arrow.blockPosition(),0,new HitResult(arrow.position()) {
+            @Override
+            public @NotNull Type getType() {
+                return Type.MISS;
+            }
+        });
+        var accessor = (AbstractArrowAccessor) arrow;
+        var context = new ProjectileSimulateContext<>(
+                (ClientLevel) arrow.level(),
+                accessor.feedhelper$isInGround(),
+                arrowInertiaAtPosFunc(arrow.level(),accessor.feedhelper$getWaterInertia(),accessor.feedhelper$getInertia()),
+                arrow.isNoPhysics(),
+                arrow.getGravity(),
+                arrow.getType().getSpawnAABB(0,0,0),
+                null
+        );
+        return predictArrowPath(context, state, maxTicks);
+    }
 
-        float gravity = 0.05f;
-        float dragAir = 0.99f;
-        float dragWater = 0.6f;
-
+    public static List<ProjectileState> predictFireworkPath(ProjectileSimulateContext<?> context, ProjectileState startState){
+        return predictFireworkPath(context,startState,PREDICATE_PROJECTILE_TICKS.getIntegerValue());
+    }
+    public static List<ProjectileState> predictFireworkPath(ProjectileSimulateContext<?> context, ProjectileState startState, int maxTicks){
+        return predictPath(context,startState,maxTicks, FireworkSimulator.INSTANCE);
+    }
+    public static List<ProjectileState> predictArrowPath(ProjectileSimulateContext<?> context, ProjectileState startState){
+        return predictArrowPath(context,startState,PREDICATE_PROJECTILE_TICKS.getIntegerValue());
+    }
+    public static List<ProjectileState> predictArrowPath(ProjectileSimulateContext<?> context, ProjectileState startState, int maxTicks){
+        return predictPath(context,startState,maxTicks,AbstractArrowSimulator.INSTANCE);
+    }
+    public static List<ProjectileState> predictPath(ProjectileSimulateContext<?> context, ProjectileState startState, int maxTicks, IProjectileSimulator<?> simulator){
+        List<ProjectileState> path = new LinkedList<>();
+        ProjectileState state = startState;
         for (int tick = 0; tick < maxTicks; tick++) {
-            path.add(pos);
-
-            Vec3 nextPos = pos.add(vel);
-
-            // 射线检测方块/实体
-            var hit = world.clip(new ClipContext(
-                    pos, nextPos,
-                    ClipContext.Block.COLLIDER,
-                    ClipContext.Fluid.NONE, // 可以检测水
-                    CollisionContext.empty()
-            ));
-
-            if (hit.getType() != HitResult.Type.MISS && world.getBlockState(hit.getBlockPos()).getFluidState().isEmpty()) {
-                path.add(hit.getLocation());
+            if (state.hitResult().getType() != HitResult.Type.MISS) {
                 break;
             }
-
-            // 更新位置
-            pos = nextPos;
-
-            // 判断是否在水中减速
-            if (world.getFluidState(BlockPos.containing(pos)).is(FluidTags.WATER)) {
-                vel = vel.scale(dragWater);
-            } else {
-                vel = vel.scale(dragAir);
+            var nextState = simulator.simulateNextTick(context, state);
+            if (Objects.equals(state,nextState)){
+                break;
             }
-
-            // 受重力影响
-            vel = vel.add(0, -gravity, 0);
-
-            // 速度过小提前停止
-            if (vel.lengthSqr() < 1e-6) break;
+            path.add(nextState);
+            state = nextState;
         }
-
         return path;
     }
 
-    public static void renderPlayerWeaponPrediction(Minecraft client,
-                                                    ClientLevel world,
-                                                    Player player,
-                                                    PoseStack matrices,
-                                                    float tickDelta) {
+    public static void renderPlayerWeaponPrediction(
+            ClientLevel world,
+            Player player,
+            PoseStack matrices,
+            float tickDelta) {
         if (player == null || world == null) return;
 
         var camera = Minecraft.getInstance().getEntityRenderDispatcher().camera;
@@ -347,203 +216,21 @@ public class RangingSystemRelated {
             if (stack.isEmpty()) continue;
 
             if (stack.getItem() instanceof BowItem) {
-                renderPlayerBowPrediction(player, stack, world, matrices, cameraPos,tickDelta);
+                renderPlayerBowPrediction(player, stack, world, matrices, cameraPos);
             } else if (stack.getItem() instanceof CrossbowItem) {
                 renderPlayerCrossbowPrediction(player, stack, world, matrices, cameraPos,tickDelta);
             } else if (stack.getItem() instanceof TridentItem) {
-                renderPlayerTridentPrediction(player, stack, world, matrices, cameraPos,tickDelta);
+                renderPlayerTridentPrediction(player, stack, world, matrices, cameraPos);
             }
         }
     }
 
-    private static void renderFireworkPrediction(Player player,
-                                                 ItemStack rocket,
-                                                 ClientLevel world,
-                                                 PoseStack matrices,
-                                                 Vec3 cameraPos,
-                                                 float[] angles) {
-        var fireworkComp = rocket.getComponents().get(DataComponents.FIREWORKS);
-        if (fireworkComp == null) return;
 
-        int flight = fireworkComp.flightDuration();
-        List<FireworkExplosion> explosions = fireworkComp.explosions();
-
-        Vec3 startPos = player.getEyePosition();
-        float yaw = player.getYRot();
-        float pitch = player.getXRot();
-
-        double yawRad = Math.toRadians(-yaw);
-        double pitchRad = Math.toRadians(-pitch);
-
-        Vec3 look = new Vec3(
-                Math.sin(yawRad) * Math.cos(pitchRad),
-                Math.sin(pitchRad),
-                Math.cos(yawRad) * Math.cos(pitchRad)
-        ).normalize();
-
-        Vec3 right = new Vec3(Math.cos(yawRad), 0, -Math.sin(yawRad)).normalize();
-
-        for (float angleDeg : angles) {
-            double angleRad = Math.toRadians(angleDeg);
-            Vec3 rotated = look.scale(Math.cos(angleRad))
-                    .add(right.scale(Math.sin(angleRad))).normalize();
-
-            Vec3 velocity = rotated.scale(1.6f);
-            Vec3 endPos = startPos.add(velocity.scale(flight * 10.0));
-
-            // 射线检测碰撞方块
-            ClipContext ctx = new ClipContext(startPos, endPos,
-                    ClipContext.Block.COLLIDER,
-                    ClipContext.Fluid.NONE,
-                    player
-            );
-            BlockHitResult result = world.clip(ctx);
-            Vec3 hitPos = result.getType() != HitResult.Type.MISS ? result.getLocation() : endPos;
-
-            // 渲染每个爆炸效果
-            for (FireworkExplosion explosion : explosions) {
-                float radius = switch (explosion.shape()) {
-                    case SMALL_BALL -> 2.0f;
-                    case LARGE_BALL -> 3.0f;
-                    case STAR -> 3.5f;
-                    case CREEPER -> 3.0f;
-                    case BURST -> 2.5f;
-                };
-                float[] color = new float[]{1f, 0.9f, 0.1f, 0.5f};
-                matrices.pushPose();
-                matrices.translate(hitPos.x - cameraPos.x, hitPos.y - cameraPos.y, hitPos.z - cameraPos.z);
-                RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color, 32, 32);
-                matrices.popPose();
-            }
-        }
-    }
-
-    private static void renderArrowPrediction(Player player,
-                                              ItemStack arrow,
-                                              ClientLevel world,
-                                              PoseStack matrices,
-                                              Vec3 cameraPos,
-                                              float[] angles) {
-
-        Vec3 startPos = player.getEyePosition();
-        float yaw = player.getYRot();
-        float pitch = player.getXRot();
-
-        double yawRad = Math.toRadians(-yaw);
-        double pitchRad = Math.toRadians(-pitch);
-
-        Vec3 look = new Vec3(
-                Math.sin(yawRad) * Math.cos(pitchRad),
-                Math.sin(pitchRad),
-                Math.cos(yawRad) * Math.cos(pitchRad)
-        ).normalize();
-
-        Vec3 right = new Vec3(Math.cos(yawRad), 0, -Math.sin(yawRad)).normalize();
-
-        for (float angleDeg : angles) {
-            double angleRad = Math.toRadians(angleDeg);
-            Vec3 rotated = look.scale(Math.cos(angleRad))
-                    .add(right.scale(Math.sin(angleRad))).normalize();
-
-            double speed = 3.0; // 初速度
-            Vec3 velocity = rotated.scale(speed);
-
-            List<Vec3> path = predictProjectilePath(startPos, velocity, world, 50,true,true); // 50 tick 外推
-
-            renderProjectilePath(matrices, path, cameraPos, new float[]{1f, 0.9f, 0.1f, 0.5f}, 0.03f, 0.2f);
-        }
-    }
-
-    private static void renderProjectilePath(PoseStack matrices,
-                                             List<Vec3> path,
-                                             Vec3 cameraPos,
-                                             float[] color,
-                                             float beamWidth,
-                                             float hitRadius) {
-        if (path.isEmpty()) return;
-
-        matrices.pushPose();
-        for (int i = 0; i < path.size() - 1; i++) {
-            Vec3 start = path.get(i).subtract(cameraPos);
-            Vec3 end = path.get(i + 1).subtract(cameraPos);
-            RenderingUtils.renderBeam(matrices, start, end, color, beamWidth);
-        }
-
-        Vec3 hitPos = path.get(path.size() - 1).subtract(cameraPos);
-        matrices.pushPose();
-        matrices.translate(hitPos.x, hitPos.y, hitPos.z);
-        RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, hitRadius, color, 32, 32);
-        matrices.popPose();
-        matrices.popPose();
-    }
-
-
-
-    public static List<Vec3> predictPlayerArrowPath(Player player, int maxTicks, ClientLevel world) {
-        List<Vec3> path = new ArrayList<>();
-
-        // 玩家手持物
-        ItemStack stack = player.getUseItem();
-        if (!(stack.getItem() instanceof BowItem || stack.getItem() instanceof CrossbowItem)) return path;
-
-        // 拉弓进度
-        float charge = 1f; // 默认为满拉弓，或者根据 getItemUseTime()/maxUseTime() 计算
-        if (stack.getItem() instanceof BowItem) {
-            int useTicks = player.getTicksUsingItem();
-            int maxUse = stack.getUseDuration(player);
-            charge = Math.min(useTicks / 20f, 1f);
-        }
-
-        // 初速度
-        double maxSpeed = 3.0; // Minecraft 默认箭初速度
-        Vec3 velocity = player.getLookAngle().scale(charge * maxSpeed);
-
-        // 初始位置
-        Vec3 pos = player.getEyePosition();
-
-        float gravity = 0.05f;
-        float dragAir = 0.99f;
-        float dragWater = 0.6f;
-
-        for (int tick = 0; tick < maxTicks; tick++) {
-            path.add(pos);
-
-            Vec3 nextPos = pos.add(velocity);
-
-            // 射线检测方块
-            var hit = world.clip(new ClipContext(
-                    pos, nextPos,
-                    ClipContext.Block.COLLIDER,
-                    ClipContext.Fluid.SOURCE_ONLY,
-                    CollisionContext.empty()
-            ));
-
-            if (hit.getType() != HitResult.Type.MISS) {
-                path.add(hit.getLocation());
-                break;
-            }
-
-            pos = nextPos;
-
-            if (world.getFluidState(BlockPos.containing(pos)).is(FluidTags.WATER)) {
-                velocity = velocity.scale(dragWater);
-            } else {
-                velocity = velocity.scale(dragAir);
-            }
-
-            velocity = velocity.add(0, -gravity, 0);
-
-            if (velocity.lengthSqr() < 1e-6) break;
-        }
-
-        return path;
-    }
-
-    public static void renderArrowPredictedPath(Minecraft client,
-                                                ClientLevel world,
-                                                Arrow arrow,
-                                                PoseStack matrices,
-                                                float tickDelta) {
+    public static void renderArrowPredictedPath(
+            Minecraft client,
+            AbstractArrow arrow,//we resolved trident
+            PoseStack matrices
+    ) {
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
         var cameraPos = camera.position();
@@ -551,25 +238,33 @@ public class RangingSystemRelated {
         if (arrow.getDeltaMovement().lengthSqr() < 1e-6) return;
 
         // 按 tick 预测箭的路径，最多 50 tick（可调）
-        List<Vec3> path = predictArrowPath(arrow.position(), arrow.getDeltaMovement(), world, 50);
-
-        if (path.isEmpty()) return;
+        var path = predictArrowPath(arrow, PREDICATE_PROJECTILE_TICKS.getIntegerValue());
+        if (path.size() < 2) return;
+        var pathIterator = path.iterator();
+        var currentState = pathIterator.next();
+        var nextState = currentState;
 
         // 颜色和宽度
-        float[] color = new float[]{1f, 1f, 1f, 0.5f}; // 半透明黄色
-        float beamWidth = .1f;
+        final float[] color = new float[]{1f, 1f, 1f, 0.5f};
+        final float[] firedColor = new float[]{1f, 0x3E/255.f, 0, 0.5f};
+        float beamWidth = 0.5f;
 
         // 遍历路径渲染每一段光束
         matrices.pushPose();
-        for (int i = 0; i < path.size() - 1; i++) {
-            Vec3 start = path.get(i).subtract(cameraPos);
-            Vec3 end = path.get(i + 1).subtract(cameraPos);
-            RenderingUtils.renderBeam(matrices, start, end, color, beamWidth);
+        while (pathIterator.hasNext()){
+            nextState = pathIterator.next();
+            RenderingUtils.renderBeam(
+                    matrices,
+                    currentState.pos().subtract(cameraPos),
+                    nextState.pos().subtract(cameraPos),
+                    nextState.onFire()?firedColor:color,
+                    beamWidth);
+            currentState = nextState;
         }
         matrices.popPose();
 
         // 可选：在终点渲染小球表示撞击点
-        Vec3 hitPos = path.getLast().subtract(cameraPos);
+        Vec3 hitPos = currentState.pos().subtract(cameraPos);
         float radius = 0.5f; // 小球半径
         matrices.pushPose();
         matrices.translate(hitPos.x, hitPos.y, hitPos.z);
@@ -578,10 +273,12 @@ public class RangingSystemRelated {
     }
 
     public static void renderCreeperBoomRange(Minecraft client,
-                                              ClientLevel world,
                                               Creeper creeper,
                                               PoseStack matrices,
                                               float tickDelta) {
+        if (!SHOW_CREEPER_RANGE.getBooleanValue()) {
+            return;
+        }
         var camera = client.getEntityRenderDispatcher().camera;
         if (camera == null) return;
         var cameraPos = camera.position();
@@ -767,7 +464,7 @@ public class RangingSystemRelated {
         );
     }
 
-
+    @Deprecated(forRemoval = true)
     public static Vec3 predictWitherSkullHitPos(Vec3 startPos, Vec3 velocity, ClientLevel world, boolean charged) {
         Vec3 pos = startPos;
         Vec3 vel = velocity;
@@ -812,154 +509,7 @@ public class RangingSystemRelated {
         return pos;
     }
 
-    public static void renderCrossbowRocketBoomRange(Minecraft client, PoseStack matrices, float tickDelta) {
-        var player = client.player;
-        var world = client.level;
-        if (player == null || world == null) return;
-
-        var camera = client.getEntityRenderDispatcher().camera;
-        if (camera == null) return;
-        var cameraPos = camera.position();
-
-        List<ItemStack> crossbows = Arrays.asList(player.getMainHandItem(), player.getOffhandItem());
-
-        for (ItemStack stack : crossbows) {
-            if (!(stack.getItem() instanceof CrossbowItem) || !CrossbowItem.isCharged(stack)) continue;
-
-            ChargedProjectiles projectiles = stack.getOrDefault(DataComponents.CHARGED_PROJECTILES, ChargedProjectiles.EMPTY);
-
-            // 多重射击检测
-            AtomicBoolean multishot = new AtomicBoolean(false);
-            stack.getEnchantments().keySet().forEach(enchantmentRegistryEntry -> {
-                enchantmentRegistryEntry.unwrapKey().ifPresent(key -> {
-                    if (key == Enchantments.MULTISHOT){
-                        multishot.set(true);
-                    }
-                });
-            });
-
-            // 多重射击角度偏移
-            float[] angles = multishot.get() ? new float[]{0f, 10f, -10f} : new float[]{0f};
-
-            for (ItemStack proj : projectiles.getItems()) {
-                if (!proj.is(Items.FIREWORK_ROCKET)) continue;
-
-                var fireworkComp = proj.getComponents().get(DataComponents.FIREWORKS);
-                if (fireworkComp == null) continue;
-
-                int flight = fireworkComp.flightDuration();
-                List<FireworkExplosion> explosions = fireworkComp.explosions();
-
-                Vec3 startPos = player.getEyePosition();
-
-                float yaw = player.getViewYRot(tickDelta);
-                float pitch = player.getViewXRot(tickDelta);
-                double yawRad = Math.toRadians(-yaw);
-                double pitchRad = Math.toRadians(-pitch);
-
-// 玩家视线方向向量
-                Vec3 look = new Vec3(
-                        Math.sin(yawRad) * Math.cos(pitchRad),
-                        Math.sin(pitchRad),
-                        Math.cos(yawRad) * Math.cos(pitchRad)
-                ).normalize();
-
-// 本地右向量 (水平)
-                Vec3 right = new Vec3(
-                        Math.cos(yawRad),
-                        0,
-                        -Math.sin(yawRad)
-                ).normalize();
-
-
-                for (float angleDeg : angles) {
-                    // 将 yaw 偏移应用在玩家本地坐标系
-                    double angleRad = Math.toRadians(angleDeg);
-
-                    // 绕 upLocal 旋转 look
-                    Vec3 rotated = look.scale(Math.cos(angleRad))
-                            .add(right.scale(Math.sin(angleRad)))
-                            .normalize();
-
-                    Vec3 velocity = rotated.scale(1.6f);
-
-                    // 飞行距离按 flight 时间乘速度
-                    Vec3 endPos = startPos.add(velocity.scale(flight * 10.0));
-
-                    // 射线检测碰撞方块
-                    ClipContext ctx = new ClipContext(startPos, endPos,
-                            ClipContext.Block.COLLIDER,
-                            ClipContext.Fluid.NONE,
-                            player);
-                    BlockHitResult result = world.clip(ctx);
-                    Vec3 hitPos = result.getType() != HitResult.Type.MISS ? result.getLocation() : endPos;
-
-                    // 渲染每个爆炸效果
-                    for (FireworkExplosion explosion : explosions) {
-                        float radius = switch (explosion.shape()) {
-                            case SMALL_BALL -> 2.0f;
-                            case LARGE_BALL -> 3.0f;
-                            case STAR -> 3.5f;
-                            case CREEPER -> 3.0f;
-                            case BURST -> 2.5f;
-                        };
-
-                        float[] color = new float[4]; // RGBA
-                        color[3] = 0.5f;
-                        if (!explosion.colors().isEmpty()) {
-                            int c = explosion.colors().getInt(0);
-                            color[0] = ((c >> 16) & 0xFF) / 255f;
-                            color[1] = ((c >> 8) & 0xFF) / 255f;
-                            color[2] = (c & 0xFF) / 255f;
-                        }
-                        if (!explosion.fadeColors().isEmpty()) {
-                            int c = explosion.fadeColors().getInt(0);
-                            color[0] = (color[0] + ((c >> 16) & 0xFF) / 255f) / 2f;
-                            color[1] = (color[1] + ((c >> 8) & 0xFF) / 255f) / 2f;
-                            color[2] = (color[2] + (c & 0xFF) / 255f) / 2f;
-                        }
-
-                        matrices.pushPose();
-                        Vec3 renderBeamStart = startPos.subtract(cameraPos);
-                        Vec3 renderBeamEnd = hitPos.subtract(cameraPos);
-                        Vec3 renderBeamVector = renderBeamEnd.subtract(renderBeamStart);
-                        Vec3 renderBeamCut = renderBeamVector.scale(0.2);
-
-                        renderBeamStart = renderBeamStart.add(renderBeamCut);
-                        RenderingUtils.renderBeam(
-                                matrices,
-                                renderBeamStart,
-                                renderBeamEnd,
-                                color,
-                                beamWidth
-                        );
-                        matrices.popPose();
-
-                        // 渲染爆炸球
-                        matrices.pushPose();
-                        matrices.translate(hitPos.x - cameraPos.x,
-                                hitPos.y - cameraPos.y,
-                                hitPos.z - cameraPos.z);
-                        RenderingUtils.renderTransparentSphere(matrices, 0, 0, 0, radius, color, 32, 32);
-                        matrices.popPose();
-                    }
-                }
-            }
-        }
-    }
-
-
-    // 简单旋转Y轴
-    private static Vec3 rotateVectorYaw(Vec3 vec, float deg) {
-        double rad = Math.toRadians(deg);
-        double cos = Math.cos(rad);
-        double sin = Math.sin(rad);
-        double x = vec.x * cos - vec.z * sin;
-        double z = vec.x * sin + vec.z * cos;
-        return new Vec3(x, vec.y, z);
-    }
-
-
+    @Deprecated(forRemoval = true)
     public static Vec3 predictDragonFireballHitPos(Vec3 startPos, Vec3 velocity, Level world) {
         Vec3 endPos = startPos.add(velocity.scale(200)); // 远距离延长射线
         ClipContext context = new ClipContext(
@@ -979,16 +529,16 @@ public class RangingSystemRelated {
         }
     }
 
+    @Deprecated(forRemoval = true)
     public static Vec3 predictFireballHitPos(Vec3 startPos, Vec3 velocity, ClientLevel world) {
         Vec3 pos = startPos;
-        Vec3 vel = velocity;
 
         double maxDistance = 100.0; // 最远预测距离
         double step = 0.1; // 每次移动步长
         double traveled = 0;
 
         while (traveled < maxDistance) {
-            Vec3 nextPos = pos.add(vel.scale(step));
+            Vec3 nextPos = pos.add(velocity.scale(step));
 
             // 射线检测方块
             var hit = world.clip(new ClipContext(
@@ -1003,7 +553,7 @@ public class RangingSystemRelated {
             }
 
             pos = nextPos;
-            traveled += vel.length() * step;
+            traveled += velocity.length() * step;
 
             // 可选：考虑引力/阻力等
             // vel = vel.add(0, -0.03, 0); // 如果模拟小火球下坠

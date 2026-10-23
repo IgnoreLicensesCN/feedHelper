@@ -4,11 +4,10 @@ import com.google.common.collect.ImmutableList;
 import com.linearity.feedhelper.config.Configs;
 import com.linearity.feedhelper.config.FeatureToggle;
 import com.linearity.feedhelper.config.Hotkeys;
-import fi.dy.masa.malilib.config.options.ConfigDouble;
+import com.linearity.feedhelper.config.RangingSystemFeatureToggle;
 import fi.dy.masa.malilib.gui.GuiBase;
 import fi.dy.masa.malilib.hotkeys.*;
 import fi.dy.masa.malilib.util.GuiUtils;
-import fi.dy.masa.malilib.util.InfoUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.input.KeyEvent;
@@ -65,7 +64,8 @@ public class InputHandler implements IKeybindProvider, IKeyboardInputHandler, IM
 //        manager.addHotkeysForCategory(MOD_NAME, MOD_ID+".hotkeys.category.disable_toggle_hotkeys", Configs.Disable.OPTIONS);
         manager.addHotkeysForCategory(MOD_NAME, MOD_ID+".hotkeys.category.generic_hotkeys", Hotkeys.HOTKEY_LIST);
         manager.addHotkeysForCategory(MOD_NAME, MOD_ID+".hotkeys.category.generic_config_hotkeys", Configs.Generic.HOTKEYS);
-        manager.addHotkeysForCategory(MOD_NAME, MOD_ID+".hotkeys.category.tweak_toggle_hotkeys", ImmutableList.copyOf(FeatureToggle.values()));
+        manager.addHotkeysForCategory(MOD_NAME, MOD_ID+".hotkeys.category.tweak_toggle_hotkeys", FeatureToggle.VALUES);
+        manager.addHotkeysForCategory(MOD_NAME, MOD_ID+".hotkeys.category.ranging_system", RangingSystemFeatureToggle.VALUES);
     }
 
     @Override
